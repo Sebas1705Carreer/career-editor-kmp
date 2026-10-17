@@ -34,6 +34,7 @@ data class CareerUiState(
 data class SettingsUiState(
     val baseUrl: String = "",
     val tokenMasked: String = "",
+    val tokenEmbedded: Boolean = false,
     val isSaving: Boolean = false,
     val message: String? = null
 )
@@ -302,7 +303,8 @@ class CareerViewModel(
         val token = repository.getToken()
         _settingsState.value = SettingsUiState(
             baseUrl = repository.getBaseUrl(),
-            tokenMasked = if (token.isNullOrBlank()) "" else token.take(6) + "••••••••"
+            tokenMasked = if (token.isNullOrBlank()) "" else token.take(6) + "••••••••",
+            tokenEmbedded = repository.hasEmbeddedToken
         )
     }
 

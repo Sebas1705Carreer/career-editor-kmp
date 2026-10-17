@@ -47,52 +47,40 @@ cd career-editor-kmp
 ## Related
 
 - [career-api-worker](https://github.com/Sebas1705Carreer/career-api-worker) — backend API (Cloudflare Workers + KV)
+## The API token
+
+The token that writes to the career API lives in **Doppler**, project `folio` (`API_TOKEN`), and is compiled into the Android app, so it opens already signed in and nobody types it on a phone. Build with it from the repo root (`doppler.yaml` binds `folio/dev`):
+
+```bash
+doppler run -- ./gradlew :composeApp:installDebug
+```
+
+Without Doppler the app still builds and asks for the token on first launch, as before. The desktop app never embeds it (its installers are published on a public release) and keeps the login screen. Rotating the token: change `API_SECRET` in Cloudflare and `API_TOKEN` in Doppler (`dev` and `prd`), then tag a new version.
+
+> **Anyone who has the APK can extract the token.** That is why the APK is never attached to a GitHub release (this repository is public): it only goes to Firebase App Distribution, to the testers invited there.
+
 ## Publishing a release
 
-One tag produces every installer — Windows, macOS, Linux and Android — attached to a single GitHub release. The repository is private, so those downloads are private too, which is why no separate distribution service is involved.
+One tag `vX.Y.Z` triggers two workflows:
 
-### One-time setup: the Android keystore
-
-Android refuses to install an unsigned release build, and it refuses to *update* an app signed with a different key. Create the keystore once and keep it safe:
-
-```bash
-keytool -genkeypair -v -keystore folio.jks -alias folio \
-  -keyalg RSA -keysize 2048 -validity 10000
-```
-
-**Back up `folio.jks` somewhere you will still have it in five years.** If it is lost, the only way to ship an update is to uninstall the app and lose its local data — Android has no recovery path for this.
-
-Then turn it into a repository secret:
-
-```bash
-base64 -w0 folio.jks > folio.jks.base64
-```
-
-Add four secrets under **Settings → Secrets and variables → Actions**:
-
-| Secret | Value |
-|---|---|
-| `ANDROID_KEYSTORE_BASE64` | contents of `folio.jks.base64` |
-| `ANDROID_KEYSTORE_PASSWORD` | the store password chosen above |
-| `ANDROID_KEY_ALIAS` | `folio` |
-| `ANDROID_KEY_PASSWORD` | the key password chosen above |
-
-Delete `folio.jks.base64` afterwards. Neither the keystore nor any password belongs in this repository — the build reads them from the environment, and a build without them simply produces an unsigned APK.
-
-### Cutting a release
-
-Version numbers live in **two** places in `composeApp/build.gradle.kts` and both have to move together: `versionName` / `versionCode` in the `android` block, and `packageVersion` under `compose.desktop`. A mismatch ships installers that disagree about what they are.
+| Workflow | Builds | Goes to |
+|---|---|---|
+| `release.yml` | Windows, macOS and Linux installers (no token inside) | the GitHub release |
+| `release-apk.yml` | signed Android APK with the token | **Firebase App Distribution** (group `testers`) |
 
 ```bash
 git tag v1.2.0
 git push origin v1.2.0
 ```
 
-The workflow builds four artifacts in parallel and publishes them. Installing on Android means downloading the APK and allowing installation from the browser once — that prompt is the price of not using a store, and it appears only the first time.
+`versionName` is the tag and `versionCode` is the workflow run number. The only GitHub secret is `DOPPLER_TOKEN` (read-only service token of `folio/prd`); everything else is read from Doppler:
 
-### Building locally
+| Doppler secret (`folio/prd`) | Used for |
+|---|---|
+| `API_TOKEN` | compiled into the APK |
+| `SIGNING_KEYSTORE_BASE64`, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD` | signing the APK |
+| `FIREBASE_APP_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON` | App Distribution (service account with the *Firebase App Distribution Admin* role) |
 
-```bash
-./gradlew :composeApp:packageDistributionForCurrentOS   # installer for this OS
-./gradlew :composeApp:assembleDebug                     # Android debug APK
-```
+The workflow checks that every one exists and fails naming the missing one.
+
+**Back up the keystore** (`folio-release.jks`) somewhere you will still have it in five years. If it is lost, an installed app can only be updated by uninstalling it first. Neither the keystore nor any password belongs in this repository.

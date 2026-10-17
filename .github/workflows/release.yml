@@ -1,8 +1,8 @@
 name: Release
 
-# One tag produces every installer: Windows, macOS, Linux and Android, attached to a
-# single release. The repository is private, so those downloads are private too — which
-# is why this needs no separate distribution service.
+# One tag produces the desktop installers (Windows, macOS, Linux), attached to a single
+# release. This repository is public, so nothing that embeds the API token may go here: the
+# Android APK is built by release-apk.yml and distributed through Firebase App Distribution.
 on:
   push:
     tags: ["v*"]
@@ -51,54 +51,8 @@ jobs:
           path: composeApp/build/compose/binaries/main/${{ matrix.format }}/*
           if-no-files-found: error
 
-  android:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-
-      # The keystore is held as a base64 secret and written to a path outside the
-      # workspace, so it cannot end up in an artifact by accident.
-      - name: Restore keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 is not set. See README, 'Publishing a release'."
-            exit 1
-          fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/folio.jks"
-
-      - name: Build signed APK
-        env:
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/folio.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          chmod +x gradlew
-          ./gradlew :composeApp:assembleRelease --no-daemon
-
-      - name: Name the APK after the tag
-        run: |
-          tag="${{ inputs.tag || github.ref_name }}"
-          mkdir -p out
-          cp composeApp/build/outputs/apk/release/*.apk "out/Folio-${tag}.apk"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: folio-apk
-          path: out/*.apk
-          if-no-files-found: error
-
   publish:
-    needs: [desktop, android]
+    needs: [desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

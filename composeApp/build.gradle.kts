@@ -62,8 +62,18 @@ android {
         applicationId = "dev.sebas1705.careereditor"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        // CI sets both from the tag (VERSION_CODE = run number); local builds keep these
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 2
+        versionName = System.getenv("VERSION_NAME") ?: "1.1.0"
+
+        // The API token comes from Doppler (`doppler run -- ./gradlew ...`), never from the
+        // repository. Without it the app builds fine and asks for the token on first launch.
+        val apiToken = System.getenv("API_TOKEN").orEmpty().trim().replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField("String", "API_TOKEN", "\"$apiToken\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {

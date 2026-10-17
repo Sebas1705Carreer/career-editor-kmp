@@ -133,7 +133,8 @@ fun SettingsScreen(
         // Security section
         SettingsSection(title = "Seguridad") {
             Text(
-                "El token se almacena de forma cifrada mediante AES-256-GCM (Android) o Java Preferences del sistema (Desktop). Nunca se transmite sin HTTPS.",
+                if (state.tokenEmbedded) "Esta versión lleva el token incluido (se gestiona en Doppler): no hace falta introducirlo. Si escribes uno nuevo arriba, tiene prioridad sobre el incluido. Nunca se transmite sin HTTPS."
+                else "El token se almacena de forma cifrada mediante AES-256-GCM (Android) o Java Preferences del sistema (Desktop). Nunca se transmite sin HTTPS.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -141,13 +142,16 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        OutlinedButton(
-            onClick = onLogout,
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            shape = MaterialTheme.shapes.medium
-        ) {
-            Text("Cerrar sesión y eliminar token")
+        // A build with its own token has no session to close: it would sign straight back in
+        if (!state.tokenEmbedded) {
+            OutlinedButton(
+                onClick = onLogout,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text("Cerrar sesión y eliminar token")
+            }
         }
 
         Spacer(Modifier.height(24.dp))

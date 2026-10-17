@@ -1,0 +1,96 @@
+name: Release APK
+
+# The Android build embeds the API write token (Doppler `folio` -> API_TOKEN), so it is
+# NEVER attached to a GitHub release: this repository is public and anyone could pull the
+# token out of the APK. It goes to Firebase App Distribution only, where just the testers
+# invited there can download it. One tag `vX.Y.Z` also triggers release.yml (desktop).
+# GitHub only needs one secret, DOPPLER_TOKEN (read-only service token of folio/prd).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without the prefix, e.g. 1.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Never cancel a release halfway: two tags in a row queue up.
+concurrency:
+  group: release-apk
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the version
+        id: ver
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then RAW="$INPUT_VERSION"; else RAW="$GITHUB_REF_NAME"; fi
+          VERSION="${RAW#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Invalid version '$RAW'. Expected X.Y.Z or X.Y.Z-suffix."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: dopplerhq/cli-action@v3
+
+      # Fails by name when a secret is missing instead of building an unsigned or token-less APK.
+      - name: Check the Doppler secrets
+        run: |
+          for k in API_TOKEN SIGNING_KEYSTORE_BASE64 SIGNING_STORE_PASSWORD SIGNING_KEY_ALIAS SIGNING_KEY_PASSWORD \
+                   FIREBASE_APP_ID FIREBASE_SERVICE_ACCOUNT_JSON; do
+            doppler secrets get "$k" --plain >/dev/null || { echo "::error::Doppler secret $k is missing in folio/prd"; exit 1; }
+          done
+
+      - name: Build the signed APK
+        env:
+          VERSION_NAME: ${{ steps.ver.outputs.version }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          doppler run -- bash -c '
+            umask 077
+            printf "%s" "$SIGNING_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/folio.jks"
+            export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/folio.jks"
+            export ANDROID_KEYSTORE_PASSWORD="$SIGNING_STORE_PASSWORD"
+            export ANDROID_KEY_ALIAS="$SIGNING_KEY_ALIAS"
+            export ANDROID_KEY_PASSWORD="$SIGNING_KEY_PASSWORD"
+            ./gradlew :composeApp:assembleRelease --no-daemon'
+
+      - name: Upload to Firebase App Distribution
+        env:
+          TESTER_GROUP: ${{ vars.FIREBASE_TESTER_GROUP || 'testers' }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          export NOTES="v$VERSION: $(git log -1 --pretty='%s (%h)')"
+          doppler run -- bash -c '
+            umask 077
+            printf "%s" "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-sa.json"
+            export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+            npx --yes firebase-tools appdistribution:distribute composeApp/build/outputs/apk/release/composeApp-release.apk \
+              --app "$FIREBASE_APP_ID" \
+              --groups "$TESTER_GROUP" \
+              --release-notes "$NOTES"'
+
+      - name: Remove the credentials from the runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/folio.jks" "$RUNNER_TEMP/firebase-sa.json"

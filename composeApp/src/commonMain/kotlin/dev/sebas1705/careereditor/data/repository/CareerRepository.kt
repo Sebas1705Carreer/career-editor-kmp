@@ -4,6 +4,7 @@ import dev.sebas1705.careereditor.data.api.CareerApiClient
 import dev.sebas1705.careereditor.data.api.DEFAULT_BASE_URL
 import dev.sebas1705.careereditor.data.model.*
 import dev.sebas1705.careereditor.security.SecureKeys
+import dev.sebas1705.careereditor.security.embeddedApiToken
 import dev.sebas1705.careereditor.security.SecureStorage
 
 // BOM (U+FEFF) y zero-width space (U+200B) llegan al pegar desde algunos portapapeles,
@@ -13,7 +14,7 @@ private fun String.trimBom(): String = trim('\uFEFF', '\u200B')
 class CareerRepository(private val secureStorage: SecureStorage = SecureStorage()) {
 
     private fun buildClient(): CareerApiClient {
-        val token = secureStorage.get(SecureKeys.API_TOKEN)
+        val token = getToken()
         val baseUrl = secureStorage.get(SecureKeys.API_BASE_URL) ?: DEFAULT_BASE_URL
         return CareerApiClient(baseUrl = baseUrl, token = token)
     }
@@ -31,7 +32,13 @@ class CareerRepository(private val secureStorage: SecureStorage = SecureStorage(
     suspend fun validateAuth(): Boolean = buildClient().validateAuth()
 
     fun saveToken(token: String) = secureStorage.put(SecureKeys.API_TOKEN, token.trim().trimBom())
-    fun getToken(): String? = secureStorage.get(SecureKeys.API_TOKEN)
+    /** A token the user typed wins; otherwise the one compiled into the build, if any. */
+    fun getToken(): String? =
+        secureStorage.get(SecureKeys.API_TOKEN)?.takeIf { it.isNotBlank() }
+            ?: embeddedApiToken.takeIf { it.isNotBlank() }
+
+    /** True when this build carries its own token (Android release), so there is nothing to sign in with or out of. */
+    val hasEmbeddedToken: Boolean get() = embeddedApiToken.isNotBlank()
     fun clearToken() = secureStorage.remove(SecureKeys.API_TOKEN)
 
     fun saveBaseUrl(url: String) = secureStorage.put(SecureKeys.API_BASE_URL, url.trim())
