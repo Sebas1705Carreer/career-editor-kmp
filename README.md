@@ -1,15 +1,15 @@
 # career-editor-kmp
 
-KMP desktop and Android editor for managing data in [career-api](https://api.sebas1705.dev) — the personal career portfolio API.
+Android editor for managing data in [career-api](https://api.sebas1705.dev) — the personal career portfolio API.
 
-**Platforms:** Android · Desktop (JVM)
+**Platform:** Android
 
 ---
 
 ## Stack
 
 - **Kotlin Multiplatform** — shared business logic across platforms
-- **Compose Multiplatform** — shared UI for Android and Desktop
+- **Compose Multiplatform** — shared UI
 - **Ktor Client** — HTTP communication with career-api
 - **Clean Architecture** — domain / data / presentation separation
 
@@ -20,7 +20,6 @@ KMP desktop and Android editor for managing data in [career-api](https://api.seb
 ```
 composeApp/
 ├── androidMain/     # Android entry point
-├── desktopMain/     # Desktop entry point
 └── commonMain/      # Shared UI, logic and network layer
 ```
 
@@ -35,10 +34,6 @@ cd career-editor-kmp
 
 **Android:** open in Android Studio and run the `composeApp` configuration.
 
-**Desktop:**
-```bash
-./gradlew desktopRun
-```
 
 > Requires Java 17+ and Android Studio Hedgehog or later.
 
@@ -55,18 +50,12 @@ The token that writes to the career API lives in **Doppler**, project `folio` (`
 doppler run -- ./gradlew :composeApp:installDebug
 ```
 
-Without Doppler the app still builds and asks for the token on first launch, as before. The desktop app never embeds it (its installers are published on a public release) and keeps the login screen. Rotating the token: change `API_SECRET` in Cloudflare and `API_TOKEN` in Doppler (`dev` and `prd`), then tag a new version.
-
+Without Doppler the app still builds and asks for the token on first launch, as before. Rotating the token: change `API_SECRET` in Cloudflare and `API_TOKEN` in Doppler (`dev` and `prd`), then tag a new version.
 > **Anyone who has the APK can extract the token.** That is why the APK is never attached to a GitHub release (this repository is public): it only goes to Firebase App Distribution, to the testers invited there.
 
 ## Publishing a release
 
-One tag `vX.Y.Z` triggers two workflows:
-
-| Workflow | Builds | Goes to |
-|---|---|---|
-| `release.yml` | Windows, macOS and Linux installers (no token inside) | the GitHub release |
-| `release-apk.yml` | signed Android APK with the token | **Firebase App Distribution** (group `testers`) |
+One tag `vX.Y.Z` triggers `release-apk.yml`, which builds the signed Android APK (with the token inside) and uploads it to **Firebase App Distribution** (group `testers`). There is no GitHub release on purpose.
 
 ```bash
 git tag v1.2.0

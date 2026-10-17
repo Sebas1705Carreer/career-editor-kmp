@@ -134,7 +134,7 @@ fun SettingsScreen(
         SettingsSection(title = "Seguridad") {
             Text(
                 if (state.tokenEmbedded) "Esta versión lleva el token incluido (se gestiona en Doppler): no hace falta introducirlo. Si escribes uno nuevo arriba, tiene prioridad sobre el incluido. Nunca se transmite sin HTTPS."
-                else "El token se almacena de forma cifrada mediante AES-256-GCM (Android) o Java Preferences del sistema (Desktop). Nunca se transmite sin HTTPS.",
+                else "El token se almacena de forma cifrada (AES-256-GCM) en este dispositivo. Nunca se transmite sin HTTPS.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -3,7 +3,6 @@ package dev.sebas1705.careereditor.security
 /**
  * Platform-specific secure key-value store.
  * Android: EncryptedSharedPreferences (AES256)
- * Desktop: Java Preferences (system keyring on supported OSes, plain prefs fallback)
  */
 expect class SecureStorage() {
     fun put(key: String, value: String)

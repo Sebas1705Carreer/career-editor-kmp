@@ -1,5 +1,3 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.compose.multiplatform)
@@ -14,11 +12,8 @@ kotlin {
             kotlinOptions { jvmTarget = "17" }
         }
     }
-    jvm("desktop")
 
     sourceSets {
-        val desktopMain by getting
-
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)
@@ -46,11 +41,6 @@ kotlin {
             implementation(libs.security.crypto)
         }
 
-        desktopMain.dependencies {
-            implementation(compose.desktop.currentOs)
-            implementation(libs.ktor.client.okhttp)
-            implementation(libs.datastore.preferences)
-        }
     }
 }
 
@@ -104,19 +94,6 @@ android {
             if (keystorePath != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
-        }
-    }
-}
-
-compose.desktop {
-    application {
-        mainClass = "dev.sebas1705.careereditor.MainKt"
-        nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "Folio"
-            packageVersion = "1.2.0"
-            description = "Career portfolio editor"
-            vendor = "Sebastián Entrerrios García"
         }
     }
 }

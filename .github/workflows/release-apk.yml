@@ -3,7 +3,7 @@ name: Release APK
 # The Android build embeds the API write token (Doppler `folio` -> API_TOKEN), so it is
 # NEVER attached to a GitHub release: this repository is public and anyone could pull the
 # token out of the APK. It goes to Firebase App Distribution only, where just the testers
-# invited there can download it. One tag `vX.Y.Z` also triggers release.yml (desktop).
+# invited there can download it.
 # GitHub only needs one secret, DOPPLER_TOKEN (read-only service token of folio/prd).
 on:
   push:
