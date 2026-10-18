@@ -56,7 +56,7 @@ android {
         targetSdk = 35
         // CI sets both from the tag (VERSION_CODE = run number); local builds keep these
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 2
-        versionName = System.getenv("VERSION_NAME") ?: "1.3.0"
+        versionName = System.getenv("VERSION_NAME") ?: "1.3.1"
 
         // The API token comes from Doppler (`doppler run -- ./gradlew ...`), never from the
         // repository. Without it the app builds fine and asks for the token on first launch.
