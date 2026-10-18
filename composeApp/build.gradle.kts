@@ -32,6 +32,7 @@ kotlin {
             implementation(libs.lifecycle.viewmodel.compose)
             implementation(libs.navigation.compose)
             implementation(libs.datastore.preferences.core)
+            implementation(libs.coil.compose)
         }
 
         androidMain.dependencies {
@@ -39,6 +40,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.datastore.preferences)
             implementation(libs.security.crypto)
+            implementation(libs.coil.network.okhttp)
         }
 
     }
@@ -60,6 +62,9 @@ android {
         // repository. Without it the app builds fine and asks for the token on first launch.
         val apiToken = System.getenv("API_TOKEN").orEmpty().trim().replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "API_TOKEN", "\"$apiToken\"")
+
+        // HTTP is refused everywhere except debug builds, which may talk to a local API (10.0.2.2)
+        manifestPlaceholders["usesCleartext"] = "false"
     }
 
     buildFeatures {
@@ -89,6 +94,9 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            manifestPlaceholders["usesCleartext"] = "true"
+        }
         getByName("release") {
             isMinifyEnabled = false
             if (keystorePath != null) {

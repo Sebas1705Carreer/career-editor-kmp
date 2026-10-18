@@ -1,17 +1,17 @@
 package dev.sebas1705.careereditor.presentation.screens
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 import dev.sebas1705.careereditor.data.model.Project
 import dev.sebas1705.careereditor.data.model.resolve
@@ -19,246 +19,153 @@ import dev.sebas1705.careereditor.presentation.components.*
 import dev.sebas1705.careereditor.presentation.viewmodel.CareerUiState
 import dev.sebas1705.careereditor.utils.toSlug
 
-private val contextIcons = mapOf("work" to "💼", "academic" to "🎓", "personal" to "⭐")
+private val contextOptions = listOf("work" to "Trabajo", "academic" to "Académico", "personal" to "Personal")
+private val contextLabels = contextOptions.toMap()
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProjectsScreen(
     state: CareerUiState,
-    onSave: (Project) -> Unit,
-    onCreate: (Project) -> Unit,
-    onDelete: (String) -> Unit,
-    onClearSuccess: () -> Unit,
-    onClearError: () -> Unit
+    lang: String,
+    onSelectLang: (String) -> Unit,
+    onSave: (Project, (Boolean) -> Unit) -> Unit,
+    onCreate: (Project, (Boolean) -> Unit) -> Unit,
+    onDelete: (String, (Boolean) -> Unit) -> Unit
 ) {
     var selected by remember { mutableStateOf<Project?>(null) }
-    var creatingNew by remember { mutableStateOf(false) }
+    var creating by remember { mutableStateOf(false) }
+    val editing = selected
 
     when {
-        selected != null -> ProjectEditScreen(
-            project = selected!!,
-            isNew = false,
-            existingProjects = state.projects,
-            state = state,
-            onSave = { onSave(it); selected = null },
-            onCreate = {},
-            onDelete = { onDelete(it); selected = null },
-            onBack = { selected = null },
-            onClearSuccess = onClearSuccess,
-            onClearError = onClearError
+        editing != null -> ProjectEditor(
+            project = editing, isNew = false, existing = state.projects, state = state, lang = lang, onLang = onSelectLang,
+            onSave = { p -> onSave(p) { ok -> if (ok) selected = null } },
+            onDelete = { onDelete(editing.id) { ok -> if (ok) selected = null } },
+            onBack = { selected = null }
         )
-        creatingNew -> ProjectEditScreen(
-            project = Project(),
-            isNew = true,
-            existingProjects = state.projects,
-            state = state,
-            onSave = {},
-            onCreate = { onCreate(it); creatingNew = false },
-            onDelete = {},
-            onBack = { creatingNew = false },
-            onClearSuccess = onClearSuccess,
-            onClearError = onClearError
+        creating -> ProjectEditor(
+            project = Project(), isNew = true, existing = state.projects, state = state, lang = lang, onLang = onSelectLang,
+            onSave = { p -> onCreate(p) { ok -> if (ok) creating = false } },
+            onDelete = null,
+            onBack = { creating = false }
         )
-        else -> Scaffold(
-            floatingActionButton = {
-                FloatingActionButton(onClick = { creatingNew = true }) {
-                    Icon(Icons.Default.Add, "Nuevo proyecto")
-                }
-            }
-        ) { scaffoldPadding ->
-            Column(Modifier.fillMaxSize().padding(scaffoldPadding).padding(16.dp)) {
-                SectionHeader("Proyectos", "${state.projects.size} proyectos")
-                if (state.saveSuccess) SuccessBanner(onDismiss = onClearSuccess)
-                state.error?.let { ErrorBanner(it, onClearError) }
+        else -> ProjectList(state, lang, onSelectLang, onOpen = { selected = it }, onAdd = { creating = true })
+    }
+}
 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(bottom = 88.dp) // el FAB no tapa la última tarjeta
-                ) {
-                    items(state.projects) { project ->
-                        Card(
-                            onClick = { selected = project },
-                            shape = MaterialTheme.shapes.medium,
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(contextIcons[project.context] ?: "📁", style = MaterialTheme.typography.titleMedium)
-                                    Column(Modifier.weight(1f)) {
-                                        Text(project.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(
-                                            project.desc.resolve("en"),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                                if (project.tags.isNotEmpty()) {
-                                    Spacer(Modifier.height(8.dp))
-                                    FlowRow {
-                                        project.tags.take(5).forEach { tag -> TagChip(tag) }
-                                        if (project.tags.size > 5) TagChip("+${project.tags.size - 5}")
-                                    }
-                                }
-                            }
-                        }
-                    }
+@Composable
+private fun ProjectList(state: CareerUiState, lang: String, onSelectLang: (String) -> Unit, onOpen: (Project) -> Unit, onAdd: () -> Unit) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf("all") }
+
+    val filtered = remember(state.projects, query, filter) {
+        state.projects.filter { p ->
+            (filter == "all" || p.context == filter) &&
+                (query.isBlank() || p.name.contains(query, ignoreCase = true) || p.tags.any { it.contains(query, ignoreCase = true) })
+        }
+    }
+    val filterOptions = listOf("all" to "Todos · ${state.projects.size}") +
+        contextOptions.map { (key, label) -> key to "$label · ${state.projects.count { it.context == key }}" }
+
+    ListFrame(
+        addLabel = "Nuevo proyecto",
+        onAdd = onAdd,
+        header = {
+            SearchField(query, { query = it }, "Buscar por nombre o tag")
+            FilterRow(filterOptions, filter) { filter = it }
+            ListHeader(
+                count = if (filtered.size == state.projects.size) "${filtered.size} proyectos" else "${filtered.size} de ${state.projects.size}",
+                trailing = { LangSwitch(state.languages.supported, lang, onSelectLang) }
+            )
+        }
+    ) {
+        items(filtered, key = { it.id }) { project ->
+            ItemCard(onClick = { onOpen(project) }) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(project.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text(contextLabels[project.context] ?: project.context, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
+                val desc = project.desc.resolve(lang)
+                if (desc.isNotBlank()) {
+                    Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (project.tags.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    // One line instead of rows of chips: the tags are for orientation, not for tapping
+                    Text(
+                        project.tags.take(4).joinToString(" · ") + if (project.tags.size > 4) "  +${project.tags.size - 4}" else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProjectEditScreen(
+private fun ProjectEditor(
     project: Project,
     isNew: Boolean,
-    existingProjects: List<Project>,
+    existing: List<Project>,
     state: CareerUiState,
+    lang: String,
+    onLang: (String) -> Unit,
     onSave: (Project) -> Unit,
-    onCreate: (Project) -> Unit,
-    onDelete: (String) -> Unit,
-    onBack: () -> Unit,
-    onClearSuccess: () -> Unit,
-    onClearError: () -> Unit
+    onDelete: (() -> Unit)?,
+    onBack: () -> Unit
 ) {
     var template by remember { mutableStateOf<Project?>(null) }
-    val base = if (isNew) template else project
+    val base = if (isNew) template ?: Project() else project
 
     var id by remember { mutableStateOf("") }
-    var idEditedByUser by remember { mutableStateOf(false) }
+    var idEdited by remember { mutableStateOf(false) }
 
-    var name    by remember(base) { mutableStateOf(base?.name ?: "") }
-    var context by remember(base) { mutableStateOf(base?.context ?: "") }
-    var desc    by remember(base) { mutableStateOf(base?.desc ?: emptyMap()) }
-    var tags    by remember(base) { mutableStateOf(base?.tags ?: emptyList()) }
-    var github  by remember(base) { mutableStateOf(base?.github ?: "") }
-    var demo    by remember(base) { mutableStateOf(base?.demo ?: "") }
+    var name     by remember(base) { mutableStateOf(base.name) }
+    var context  by remember(base) { mutableStateOf(base.context.ifBlank { if (isNew) "personal" else "" }) }
+    var github   by remember(base) { mutableStateOf(base.github ?: "") }
+    var demo     by remember(base) { mutableStateOf(base.demo ?: "") }
+    var tags     by remember(base) { mutableStateOf(base.tags) }
+    var desc     by remember(base) { mutableStateOf(base.desc) }
+    var longDesc by remember(base) { mutableStateOf(base.longDesc) }
 
-    var editingLang by remember { mutableStateOf(state.languages.default.ifBlank { "en" }) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    var showTemplatePicker by remember { mutableStateOf(false) }
+    val built = Project(
+        id = if (isNew) id else project.id, name = name, context = context, desc = desc, longDesc = longDesc,
+        tags = tags, github = github.ifBlank { null }, demo = demo.ifBlank { null }
+    )
+    val dirty = if (isNew) name.isNotBlank() || tags.isNotEmpty() || desc.isNotEmpty() else built != project
 
-    if (showDeleteDialog) {
-        DeleteConfirmDialog(
-            itemName = project.name,
-            onConfirm = { showDeleteDialog = false; onDelete(project.id) },
-            onDismiss = { showDeleteDialog = false }
-        )
-    }
+    EditorScaffold(
+        title = if (isNew) "Nuevo proyecto" else project.name,
+        isNew = isNew,
+        dirty = dirty,
+        canSave = name.isNotBlank() && context.isNotBlank() && (!isNew || id.isNotBlank()),
+        saving = state.isLoading,
+        saveLabel = if (isNew) "Crear proyecto" else "Guardar cambios",
+        onSave = { onSave(built) },
+        onBack = onBack,
+        onDelete = onDelete,
+        deleteName = project.name
+    ) {
+        if (isNew) TemplatePicker(existing, template, { it.name }, { template = it; idEdited = false })
 
-    fun buildProject(): Project {
-        val pid = if (isNew) id else project.id
-        return Project(
-            id = pid, name = name, context = context, desc = desc, tags = tags,
-            github = github.ifBlank { null }, demo = demo.ifBlank { null }
-        )
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (isNew) "Nuevo proyecto" else project.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } },
-                actions = {
-                    if (!isNew) DeleteButton(onClick = { showDeleteDialog = true }, enabled = !state.isLoading)
-                }
-            )
+        FieldGroup("General") {
+            SectionField("Nombre del proyecto", name, {
+                name = it
+                if (isNew && !idEdited) id = it.toSlug()
+            }, required = true, singleLine = true)
+            if (isNew) IdField(id) { id = it; idEdited = true }
+            SelectField("Contexto", context, contextOptions) { context = it }
+            SectionField("GitHub", github, { github = it }, singleLine = true)
+            SectionField("Demo", demo, { demo = it }, singleLine = true)
         }
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            LanguageTabs(state.languages.supported, editingLang, onSelect = { editingLang = it })
 
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-                if (state.saveSuccess) SuccessBanner(onDismiss = onClearSuccess)
-                state.error?.let { ErrorBanner(it, onClearError) }
+        DynamicListField(label = "Tags", items = tags, onItemsChange = { tags = it }, placeholder = "Añadir tag (Kotlin, Firebase…)")
 
-                if (isNew && existingProjects.isNotEmpty()) {
-                    OutlinedCard(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text("Plantilla (opcional)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
-                            Spacer(Modifier.height(4.dp))
-                            ExposedDropdownMenuBox(
-                                expanded = showTemplatePicker,
-                                onExpandedChange = { showTemplatePicker = it }
-                            ) {
-                                OutlinedTextField(
-                                    value = template?.name ?: "Sin plantilla",
-                                    onValueChange = {},
-                                    readOnly = true,
-                                    label = { Text("Copiar datos de...") },
-                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(showTemplatePicker) },
-                                    modifier = Modifier.fillMaxWidth().menuAnchor()
-                                )
-                                ExposedDropdownMenu(expanded = showTemplatePicker, onDismissRequest = { showTemplatePicker = false }) {
-                                    DropdownMenuItem(text = { Text("Sin plantilla") }, onClick = { template = null; showTemplatePicker = false })
-                                    existingProjects.forEach { p ->
-                                        DropdownMenuItem(
-                                            text = { Text(p.name) },
-                                            onClick = { template = p; showTemplatePicker = false; idEditedByUser = false }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (isNew) IdField(value = id, onValueChange = { id = it; idEditedByUser = true })
-
-                FieldGroup("General (no localizable)") {
-                    SectionField(
-                        label = "Nombre del proyecto", value = name, required = true, singleLine = true,
-                        onValueChange = {
-                            name = it
-                            if (isNew && !idEditedByUser) id = it.toSlug()
-                        }
-                    )
-                    SectionField(
-                        label = "Contexto", value = context, singleLine = true, supportingText = "work / academic / personal",
-                        onValueChange = { context = it }
-                    )
-                    SectionField("GitHub URL", github, { github = it }, singleLine = true)
-                    SectionField("Demo URL", demo, { demo = it }, singleLine = true)
-                }
-
-                DynamicListField(
-                    label = "Tags",
-                    items = tags,
-                    onItemsChange = { tags = it },
-                    placeholder = "Ej: Kotlin, Firebase..."
-                )
-
-                FieldGroup("Descripción [$editingLang]") {
-                    SectionField(
-                        label = "Descripción",
-                        value = desc[editingLang] ?: "",
-                        onValueChange = { desc = desc + (editingLang to it) }
-                    )
-                }
-
-                val saveEnabled = name.isNotBlank() && (!isNew || id.isNotBlank())
-                if (isNew) {
-                    Button(
-                        onClick = { onCreate(buildProject()) },
-                        enabled = !state.isLoading && saveEnabled,
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(48.dp),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        if (state.isLoading) {
-                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                            Spacer(Modifier.width(8.dp)); Text("Creando...")
-                        } else Text("Crear proyecto")
-                    }
-                } else {
-                    SaveButton(onClick = { onSave(buildProject()) }, isLoading = state.isLoading, enabled = saveEnabled)
-                }
-            }
+        FieldGroup("Descripción", trailing = { LangSwitch(state.languages.supported, lang, onLang) }) {
+            SectionField("Descripción corta", desc[lang] ?: "", { desc = desc.with(lang, it) }, minLines = 2)
+            SectionField("Descripción larga", longDesc[lang] ?: "", { longDesc = longDesc.with(lang, it) }, minLines = 4)
         }
     }
 }

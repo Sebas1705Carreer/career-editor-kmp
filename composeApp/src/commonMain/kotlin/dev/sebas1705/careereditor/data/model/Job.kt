@@ -15,6 +15,8 @@ data class Job(
     val type: Map<String, String> = emptyMap(),
     val period: Map<String, String> = emptyMap(),
     val desc: Map<String, String> = emptyMap(),
+    // LocalizedString: the long text the portfolio shows when a card is opened
+    @SerialName("long_desc") val longDesc: Map<String, String> = emptyMap(),
     // Non-localizable
     val projects: List<String> = emptyList(),
     // Localized list — { "en": ["...", "..."], "es": ["...", "..."] }

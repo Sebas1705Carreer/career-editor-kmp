@@ -9,6 +9,7 @@ lifecycle = "2.8.4"
 navigation = "2.8.0-alpha10"
 datastore = "1.1.1"
 security-crypto = "1.1.0-alpha06"
+coil = "3.0.4"
 
 [libraries]
 # Ktor
@@ -30,6 +31,9 @@ navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-co
 # DataStore (multiplatform preferences)
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 datastore-preferences-core = { module = "androidx.datastore:datastore-preferences-core", version.ref = "datastore" }
+# Images (skill icons)
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 # Android security
 security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
 

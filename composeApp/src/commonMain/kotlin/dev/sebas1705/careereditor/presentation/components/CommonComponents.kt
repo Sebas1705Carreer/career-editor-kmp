@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,47 +34,32 @@ fun SectionField(
     onValueChange: (String) -> Unit,
     singleLine: Boolean = false,
     required: Boolean = false,
-    supportingText: String? = null
+    supportingText: String? = null,
+    minLines: Int = 1
 ) {
-    val isError = required && value.isBlank()
+    // A new, empty form should not open already covered in red: errors wait until the field was visited
+    var visited by remember { mutableStateOf(false) }
+    var hadFocus by remember { mutableStateOf(false) }
+    val isError = required && value.isBlank() && visited
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(if (required) "$label *" else label) },
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).onFocusChanged {
+            if (it.isFocused) hadFocus = true else if (hadFocus) visited = true
+        },
         singleLine = singleLine,
-        maxLines = if (singleLine) 1 else 5,
+        minLines = minLines,
+        maxLines = if (singleLine) 1 else maxOf(5, minLines),
         isError = isError,
         supportingText = when {
             isError -> ({ Text("Campo obligatorio", color = MaterialTheme.colorScheme.error) })
-            supportingText != null -> ({ Text(supportingText, style = MaterialTheme.typography.labelSmall) })
+            supportingText != null -> ({ Text(supportingText, style = MaterialTheme.typography.bodySmall) })
             else -> null
         },
         shape = MaterialTheme.shapes.medium,
         keyboardOptions = KeyboardOptions(imeAction = if (singleLine) ImeAction.Next else ImeAction.Default)
     )
-}
-
-@Composable
-fun SaveButton(onClick: () -> Unit, isLoading: Boolean = false, enabled: Boolean = true) {
-    Button(
-        onClick = onClick,
-        enabled = !isLoading && enabled,
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(48.dp),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        if (isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
-            Spacer(Modifier.width(8.dp))
-            Text("Guardando...")
-        } else {
-            Text("Guardar cambios")
-        }
-    }
 }
 
 @Composable
@@ -84,94 +70,6 @@ fun LoadingScreen() {
             Spacer(Modifier.height(16.dp))
             Text("Cargando datos...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }
-}
-
-@Composable
-fun ErrorBanner(message: String, onDismiss: () -> Unit) {
-    AnimatedVisibility(visible = true, enter = fadeIn(), exit = fadeOut()) {
-        Surface(
-            color = MaterialTheme.colorScheme.errorContainer,
-            shape = MaterialTheme.shapes.medium,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-        ) {
-            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "⚠ $message",
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = onDismiss, contentPadding = PaddingValues(0.dp)) {
-                    Text("✕", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun SuccessBanner(onDismiss: () -> Unit) {
-    AnimatedVisibility(visible = true, enter = fadeIn(), exit = fadeOut()) {
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shape = MaterialTheme.shapes.medium,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-        ) {
-            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "✓ Guardado correctamente",
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = onDismiss, contentPadding = PaddingValues(0.dp)) {
-                    Text("✕", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun TagChip(label: String) {
-    SuggestionChip(
-        onClick = {},
-        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-        modifier = Modifier.padding(end = 4.dp, bottom = 4.dp)
-    )
-}
-
-/**
- * Cabecera de archivo — la firma visual de Folio, en una sola línea.
- * El TopAppBar ya nombra la sección; aquí solo la ruta monospace
- * (`~/portfolio/<slug>`) y el dato de la sección como contador `[...]`.
- */
-@Composable
-fun SectionHeader(title: String, subtitle: String? = null) {
-    Column(Modifier.padding(bottom = 10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // weight + ellipsis: la ruta cede espacio antes de pisar el contador
-            Text(
-                "~/portfolio/${title.toSlug()}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            if (subtitle != null) {
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "[$subtitle]",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.surfaceVariant)
     }
 }
 
@@ -221,29 +119,21 @@ fun DynamicListField(
         if (v.isNotBlank() && v !in items) { onItemsChange(items + v); input = "" }
     }
 
-    Card(
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(1.dp),
-        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp)
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+    FieldGroup(label) {
+        Column(modifier) {
             if (items.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items.forEach { item ->
                         InputChip(
                             selected = false,
                             onClick = { onItemsChange(items - item) },
                             label = { Text(item, style = MaterialTheme.typography.labelSmall) },
-                            trailingIcon = { Icon(Icons.Default.Close, "Eliminar", modifier = Modifier.size(14.dp)) },
-                            modifier = Modifier.padding(bottom = 2.dp)
+                            trailingIcon = { Icon(Icons.Default.Close, "Quitar", modifier = Modifier.size(14.dp)) },
                         )
                     }
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = input,
@@ -251,7 +141,7 @@ fun DynamicListField(
                     placeholder = { Text(placeholder, style = MaterialTheme.typography.bodySmall) },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    shape = MaterialTheme.shapes.small,
+                    shape = MaterialTheme.shapes.medium,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { addItem() })
                 )
@@ -275,7 +165,7 @@ fun IdField(value: String, onValueChange: (String) -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         singleLine = true,
         shape = MaterialTheme.shapes.medium,
-        supportingText = { Text("Solo letras minúsculas, números y guiones", style = MaterialTheme.typography.labelSmall) }
+        supportingText = { Text("Solo letras minúsculas, números y guiones", style = MaterialTheme.typography.bodySmall) }
     )
 }
 
@@ -301,41 +191,4 @@ fun DeleteConfirmDialog(itemName: String, onConfirm: () -> Unit, onDismiss: () -
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
-}
-
-/**
- * Tab row for switching between content languages when editing.
- * Only renders when there are 2+ supported languages.
- */
-@Composable
-fun LanguageTabs(
-    languages: List<Language>,
-    selectedCode: String,
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    if (languages.size < 2) return
-    val selectedIndex = languages.indexOfFirst { it.code == selectedCode }.coerceAtLeast(0)
-    ScrollableTabRow(
-        selectedTabIndex = selectedIndex,
-        modifier = modifier.fillMaxWidth(),
-        edgePadding = 0.dp,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = MaterialTheme.colorScheme.primary
-    ) {
-        languages.forEach { lang ->
-            Tab(
-                selected = lang.code == selectedCode,
-                onClick = { onSelect(lang.code) },
-                // Una sola línea: dos textos apilados hacían el tab demasiado alto
-                text = {
-                    Text(
-                        "${lang.code.uppercase()} · ${lang.labelNative}",
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1
-                    )
-                }
-            )
-        }
-    }
 }

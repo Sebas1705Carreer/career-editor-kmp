@@ -53,6 +53,19 @@ doppler run -- ./gradlew :composeApp:installDebug
 Without Doppler the app still builds and asks for the token on first launch, as before. Rotating the token: change `API_SECRET` in Cloudflare and `API_TOKEN` in Doppler (`dev` and `prd`), then tag a new version.
 > **Anyone who has the APK can extract the token.** That is why the APK is never attached to a GitHub release (this repository is public): it only goes to Firebase App Distribution, to the testers invited there.
 
+## Trying writes without touching production
+
+Saves go to the real API, so test them against a local copy: seed a local KV with the live data and run the worker with a throwaway secret (from `career-api-worker`):
+
+```bash
+# once per entity (languages, personal, jobs, projects, skills, education, certifications, soft-skills)
+npx wrangler kv key put --local --persist-to <dir>/state --binding CAREER_KV projects --path projects.json
+
+npx wrangler dev --local --port 8787 --persist-to <dir>/state --var API_SECRET:qa-secret
+```
+
+On an emulator, open Settings, set the URL to `http://10.0.2.2:8787` and the token to `qa-secret`. Only debug builds accept plain HTTP; release builds refuse it.
+
 ## Publishing a release
 
 One tag `vX.Y.Z` triggers `release-apk.yml`, which builds the signed Android APK (with the token inside) and uploads it to **Firebase App Distribution** (group `testers`). There is no GitHub release on purpose.

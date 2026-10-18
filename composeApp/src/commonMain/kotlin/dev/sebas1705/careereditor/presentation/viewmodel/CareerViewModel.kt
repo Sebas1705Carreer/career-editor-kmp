@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import dev.sebas1705.careereditor.data.model.*
 import dev.sebas1705.careereditor.data.repository.CareerRepository
 import io.ktor.client.plugins.ClientRequestException
+import io.ktor.client.plugins.ServerResponseException
+import kotlinx.coroutines.CancellationException
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +23,7 @@ data class CareerUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val saveSuccess: Boolean = false,
+    val loadFailed: Boolean = false,
     val languages: Languages = Languages(),
     val personal: Personal = Personal(),
     val jobs: List<Job> = emptyList(),
@@ -146,150 +149,181 @@ class CareerViewModel(
                     certifications = repository.getCertifications(),
                     softSkills     = repository.getSoftSkills()
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Error de red")
+                _uiState.value = _uiState.value.copy(isLoading = false, loadFailed = true, error = friendlyError(e, "cargar los datos"))
             }
         }
     }
 
     private fun <T> saveItem(
         request: suspend () -> T,
-        onSuccess: (T) -> CareerUiState
+        onSuccess: (T) -> CareerUiState,
+        onDone: (Boolean) -> Unit = {}
     ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null, saveSuccess = false)
             try {
                 val result = request()
                 _uiState.value = onSuccess(result).copy(saveSuccess = true)
-            } catch (e: ClientRequestException) {
-                val msg = if (e.response.status == HttpStatusCode.Unauthorized)
-                    "Token inválido o caducado: vuelve a iniciar sesión en Ajustes"
-                else "Error ${e.response.status.value} al guardar"
-                _uiState.value = _uiState.value.copy(isLoading = false, error = msg)
+                onDone(true)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Error al guardar")
+                _uiState.value = _uiState.value.copy(isLoading = false, error = friendlyError(e, "guardar"))
+                onDone(false)
             }
         }
     }
 
+    /** What the user needs to know, in Spanish, instead of the raw exception text (often English). */
+    private fun friendlyError(e: Exception, action: String): String = when (e) {
+        is ClientRequestException ->
+            if (e.response.status == HttpStatusCode.Unauthorized) "El token no es válido o ha caducado: revísalo en Ajustes"
+            else "La API rechazó la petición (${e.response.status.value}) al $action"
+        is ServerResponseException -> "La API falló (${e.response.status.value}) al $action. Inténtalo de nuevo."
+        else -> "No se pudo conectar con la API. Revisa la conexión e inténtalo de nuevo."
+    }
+
     // ── Singular saves ────────────────────────────────────────────────────────
 
-    fun saveLanguages(languages: Languages) = saveItem(
+    fun saveLanguages(languages: Languages, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.updateLanguages(languages) },
-        onSuccess = { updated -> _uiState.value.copy(isLoading = false, languages = updated) }
+        onSuccess = { updated -> _uiState.value.copy(isLoading = false, languages = updated) },
+        onDone = onDone
     )
 
-    fun savePersonal(personal: Personal) = saveItem(
+    fun savePersonal(personal: Personal, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.updatePersonal(personal) },
-        onSuccess = { _uiState.value.copy(isLoading = false, personal = it) }
+        onSuccess = { _uiState.value.copy(isLoading = false, personal = it) },
+        onDone = onDone
     )
 
     // ── Updates (PATCH) ───────────────────────────────────────────────────────
 
-    fun saveJob(job: Job) = saveItem(
+    fun saveJob(job: Job, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.updateJob(job) },
         onSuccess = { updated ->
             _uiState.value.copy(isLoading = false, jobs = _uiState.value.jobs.map { if (it.id == job.id) updated else it })
-        }
+        },
+        onDone = onDone
     )
 
-    fun saveProject(project: Project) = saveItem(
+    fun saveProject(project: Project, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.updateProject(project) },
         onSuccess = { updated ->
             _uiState.value.copy(isLoading = false, projects = _uiState.value.projects.map { if (it.id == project.id) updated else it })
-        }
+        },
+        onDone = onDone
     )
 
-    fun saveSkill(skill: Skill) = saveItem(
+    fun saveSkill(skill: Skill, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.updateSkill(skill) },
         onSuccess = { updated ->
             _uiState.value.copy(isLoading = false, skills = _uiState.value.skills.map { if (it.id == skill.id) updated else it })
-        }
+        },
+        onDone = onDone
     )
 
-    fun saveEducation(education: Education) = saveItem(
+    fun saveEducation(education: Education, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.updateEducation(education) },
         onSuccess = { updated ->
             _uiState.value.copy(isLoading = false, education = _uiState.value.education.map { if (it.id == education.id) updated else it })
-        }
+        },
+        onDone = onDone
     )
 
-    fun saveCertification(cert: Certification) = saveItem(
+    fun saveCertification(cert: Certification, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.updateCertification(cert) },
         onSuccess = { updated ->
             _uiState.value.copy(isLoading = false, certifications = _uiState.value.certifications.map { if (it.id == cert.id) updated else it })
-        }
+        },
+        onDone = onDone
     )
 
-    fun saveSoftSkill(skill: SoftSkill) = saveItem(
+    fun saveSoftSkill(skill: SoftSkill, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.updateSoftSkill(skill) },
         onSuccess = { updated ->
             _uiState.value.copy(isLoading = false, softSkills = _uiState.value.softSkills.map { if (it.id == skill.id) updated else it })
-        }
+        },
+        onDone = onDone
     )
 
     // ── Creates (POST) ────────────────────────────────────────────────────────
 
-    fun createJob(job: Job) = saveItem(
+    fun createJob(job: Job, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.createJob(job) },
-        onSuccess = { created -> _uiState.value.copy(isLoading = false, jobs = _uiState.value.jobs + created) }
+        onSuccess = { created -> _uiState.value.copy(isLoading = false, jobs = _uiState.value.jobs + created) },
+        onDone = onDone
     )
 
-    fun createProject(project: Project) = saveItem(
+    fun createProject(project: Project, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.createProject(project) },
-        onSuccess = { created -> _uiState.value.copy(isLoading = false, projects = _uiState.value.projects + created) }
+        onSuccess = { created -> _uiState.value.copy(isLoading = false, projects = _uiState.value.projects + created) },
+        onDone = onDone
     )
 
-    fun createSkill(skill: Skill) = saveItem(
+    fun createSkill(skill: Skill, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.createSkill(skill) },
-        onSuccess = { created -> _uiState.value.copy(isLoading = false, skills = _uiState.value.skills + created) }
+        onSuccess = { created -> _uiState.value.copy(isLoading = false, skills = _uiState.value.skills + created) },
+        onDone = onDone
     )
 
-    fun createEducation(education: Education) = saveItem(
+    fun createEducation(education: Education, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.createEducation(education) },
-        onSuccess = { created -> _uiState.value.copy(isLoading = false, education = _uiState.value.education + created) }
+        onSuccess = { created -> _uiState.value.copy(isLoading = false, education = _uiState.value.education + created) },
+        onDone = onDone
     )
 
-    fun createCertification(cert: Certification) = saveItem(
+    fun createCertification(cert: Certification, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.createCertification(cert) },
-        onSuccess = { created -> _uiState.value.copy(isLoading = false, certifications = _uiState.value.certifications + created) }
+        onSuccess = { created -> _uiState.value.copy(isLoading = false, certifications = _uiState.value.certifications + created) },
+        onDone = onDone
     )
 
-    fun createSoftSkill(skill: SoftSkill) = saveItem(
+    fun createSoftSkill(skill: SoftSkill, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.createSoftSkill(skill) },
-        onSuccess = { created -> _uiState.value.copy(isLoading = false, softSkills = _uiState.value.softSkills + created) }
+        onSuccess = { created -> _uiState.value.copy(isLoading = false, softSkills = _uiState.value.softSkills + created) },
+        onDone = onDone
     )
 
     // ── Deletes ───────────────────────────────────────────────────────────────
 
-    fun deleteJob(id: String) = saveItem(
+    fun deleteJob(id: String, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.deleteJob(id) },
-        onSuccess = { _uiState.value.copy(isLoading = false, jobs = _uiState.value.jobs.filter { it.id != id }) }
+        onSuccess = { _uiState.value.copy(isLoading = false, jobs = _uiState.value.jobs.filter { it.id != id }) },
+        onDone = onDone
     )
 
-    fun deleteProject(id: String) = saveItem(
+    fun deleteProject(id: String, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.deleteProject(id) },
-        onSuccess = { _uiState.value.copy(isLoading = false, projects = _uiState.value.projects.filter { it.id != id }) }
+        onSuccess = { _uiState.value.copy(isLoading = false, projects = _uiState.value.projects.filter { it.id != id }) },
+        onDone = onDone
     )
 
-    fun deleteSkill(id: String) = saveItem(
+    fun deleteSkill(id: String, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.deleteSkill(id) },
-        onSuccess = { _uiState.value.copy(isLoading = false, skills = _uiState.value.skills.filter { it.id != id }) }
+        onSuccess = { _uiState.value.copy(isLoading = false, skills = _uiState.value.skills.filter { it.id != id }) },
+        onDone = onDone
     )
 
-    fun deleteEducation(id: String) = saveItem(
+    fun deleteEducation(id: String, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.deleteEducation(id) },
-        onSuccess = { _uiState.value.copy(isLoading = false, education = _uiState.value.education.filter { it.id != id }) }
+        onSuccess = { _uiState.value.copy(isLoading = false, education = _uiState.value.education.filter { it.id != id }) },
+        onDone = onDone
     )
 
-    fun deleteCertification(id: String) = saveItem(
+    fun deleteCertification(id: String, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.deleteCertification(id) },
-        onSuccess = { _uiState.value.copy(isLoading = false, certifications = _uiState.value.certifications.filter { it.id != id }) }
+        onSuccess = { _uiState.value.copy(isLoading = false, certifications = _uiState.value.certifications.filter { it.id != id }) },
+        onDone = onDone
     )
 
-    fun deleteSoftSkill(id: String) = saveItem(
+    fun deleteSoftSkill(id: String, onDone: (Boolean) -> Unit = {}) = saveItem(
         request = { repository.deleteSoftSkill(id) },
-        onSuccess = { _uiState.value.copy(isLoading = false, softSkills = _uiState.value.softSkills.filter { it.id != id }) }
+        onSuccess = { _uiState.value.copy(isLoading = false, softSkills = _uiState.value.softSkills.filter { it.id != id }) },
+        onDone = onDone
     )
 
     // ── Utilities ─────────────────────────────────────────────────────────────
@@ -303,7 +337,7 @@ class CareerViewModel(
         val token = repository.getToken()
         _settingsState.value = SettingsUiState(
             baseUrl = repository.getBaseUrl(),
-            tokenMasked = if (token.isNullOrBlank()) "" else token.take(6) + "••••••••",
+            tokenMasked = if (token.isNullOrBlank()) "" else "••••••••  (${token.length} caracteres)",
             tokenEmbedded = repository.hasEmbeddedToken
         )
     }

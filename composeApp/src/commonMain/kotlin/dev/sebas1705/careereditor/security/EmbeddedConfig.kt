@@ -7,3 +7,6 @@ package dev.sebas1705.careereditor.security
  * Distribution, never to a public release.
  */
 expect val embeddedApiToken: String
+
+/** versionName of this build (shown in Settings instead of a hardcoded string). */
+expect val appVersionName: String

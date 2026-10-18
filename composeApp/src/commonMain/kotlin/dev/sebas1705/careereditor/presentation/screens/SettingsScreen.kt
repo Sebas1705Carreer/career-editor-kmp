@@ -1,11 +1,9 @@
 package dev.sebas1705.careereditor.presentation.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -14,90 +12,55 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.sebas1705.careereditor.data.api.DEFAULT_BASE_URL
+import dev.sebas1705.careereditor.presentation.components.FieldGroup
 import dev.sebas1705.careereditor.presentation.viewmodel.SettingsUiState
+import dev.sebas1705.careereditor.security.appVersionName
 
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
     onSave: (url: String, token: String) -> Unit,
-    onLogout: () -> Unit,
-    onClearMessage: () -> Unit
+    onLogout: () -> Unit
 ) {
     var newToken by remember { mutableStateOf("") }
     var showNewToken by remember { mutableStateOf(false) }
     var newUrl by remember(state.baseUrl) { mutableStateOf(state.baseUrl) }
+    val changed = newUrl.trim() != state.baseUrl || newToken.isNotBlank()
 
     Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Ajustes", style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(16.dp))
-
-        AnimatedVisibility(state.message != null) {
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-            ) {
-                Row(Modifier.padding(12.dp)) {
-                    Text(
-                        state.message ?: "",
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = onClearMessage, contentPadding = PaddingValues(0.dp)) {
-                        Text("✕", style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-            }
-        }
-
-        // API Config section
-        SettingsSection(title = "Conexión a la API") {
+        FieldGroup("Conexión a la API") {
             OutlinedTextField(
                 value = newUrl,
                 onValueChange = { newUrl = it },
-                label = { Text("URL base de la API") },
+                label = { Text("URL base") },
                 placeholder = { Text(DEFAULT_BASE_URL) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 singleLine = true,
                 shape = MaterialTheme.shapes.medium,
-                supportingText = { Text("Por defecto: $DEFAULT_BASE_URL") }
+                supportingText = if (newUrl.trim() != DEFAULT_BASE_URL) ({ Text("Por defecto: $DEFAULT_BASE_URL") }) else null
             )
 
-            Spacer(Modifier.height(8.dp))
-
-            Row(Modifier.fillMaxWidth()) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.weight(1f).padding(vertical = 4.dp)
-                ) {
-                    Row(Modifier.padding(12.dp)) {
-                        Text(
-                            "Token actual: ",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            state.tokenMasked.ifBlank { "(sin token)" },
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                    }
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    Text("Token  ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        if (state.tokenEmbedded && state.tokenMasked.isBlank()) "incluido en la app" else state.tokenMasked.ifBlank { "sin token" },
+                        style = MaterialTheme.typography.labelMedium
+                    )
                 }
             }
-
-            Spacer(Modifier.height(8.dp))
 
             OutlinedTextField(
                 value = newToken,
                 onValueChange = { newToken = it },
-                label = { Text("Nuevo token (opcional)") },
-                placeholder = { Text("Dejar vacío para no cambiar") },
+                label = { Text(if (state.tokenEmbedded) "Usar otro token (opcional)" else "Nuevo token (opcional)") },
                 visualTransformation = if (showNewToken) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     TextButton(onClick = { showNewToken = !showNewToken }) {
@@ -105,17 +68,22 @@ fun SettingsScreen(
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 singleLine = true,
-                shape = MaterialTheme.shapes.medium
+                shape = MaterialTheme.shapes.medium,
+                supportingText = {
+                    Text(
+                        if (state.tokenEmbedded) "Esta versión ya lleva el token (se gestiona en Doppler). Uno nuevo tendría prioridad."
+                        else "Se guarda cifrado en este dispositivo.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             )
         }
 
-        Spacer(Modifier.height(8.dp))
-
         Button(
             onClick = { onSave(newUrl, newToken); newToken = "" },
-            enabled = !state.isSaving,
+            enabled = changed && !state.isSaving,
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = MaterialTheme.shapes.medium
         ) {
@@ -125,22 +93,6 @@ fun SettingsScreen(
             }
             Text("Guardar ajustes")
         }
-
-        Spacer(Modifier.height(24.dp))
-        HorizontalDivider()
-        Spacer(Modifier.height(16.dp))
-
-        // Security section
-        SettingsSection(title = "Seguridad") {
-            Text(
-                if (state.tokenEmbedded) "Esta versión lleva el token incluido (se gestiona en Doppler): no hace falta introducirlo. Si escribes uno nuevo arriba, tiene prioridad sobre el incluido. Nunca se transmite sin HTTPS."
-                else "El token se almacena de forma cifrada (AES-256-GCM) en este dispositivo. Nunca se transmite sin HTTPS.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
 
         // A build with its own token has no session to close: it would sign straight back in
         if (!state.tokenEmbedded) {
@@ -154,26 +106,11 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(24.dp))
-
         Text(
-            "Folio v1.2.0 · career-api.sebas1705.workers.dev",
+            "Folio v$appVersionName · ${state.baseUrl.removePrefix("https://").removePrefix("http://")}",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline
+            color = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.padding(top = 8.dp)
         )
-    }
-}
-
-@Composable
-private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-    Spacer(Modifier.height(8.dp))
-    Card(
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(Modifier.padding(16.dp), content = content)
     }
 }

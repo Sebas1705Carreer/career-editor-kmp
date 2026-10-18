@@ -20,7 +20,9 @@ class CareerApiClient(
 ) {
     // coerceInputValues: un null explicito en un campo no-nullable cae al valor
     // por defecto en vez de tirar la deserializacion entera (y con ella loadAll).
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true }
+    // encodeDefaults: updates are PATCH (merge). Without it an emptied field equals its default
+    // and is left out of the body, so clearing e.g. the GitHub URL would silently not persist.
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true; encodeDefaults = true }
 
     val httpClient = HttpClient {
         // Sin esto, un 401/4xx no lanza excepción y el JSON de error se
