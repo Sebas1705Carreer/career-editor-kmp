@@ -20,6 +20,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.sebas1705.careereditor.data.api.DEFAULT_BASE_URL
 import dev.sebas1705.careereditor.presentation.components.FolioMark
 
 @Composable
@@ -72,7 +73,7 @@ fun LoginScreen(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "career-api.sebas1705.workers.dev",
+                DEFAULT_BASE_URL.removePrefix("https://"), // one source of truth, no hardcoded host
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
