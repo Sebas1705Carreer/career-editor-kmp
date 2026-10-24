@@ -19,6 +19,7 @@ class CareerRepository(private val secureStorage: SecureStorage = SecureStorage(
         return CareerApiClient(baseUrl = baseUrl, token = token)
     }
 
+    suspend fun getAll() = buildClient().getAll()
     suspend fun getLanguages() = buildClient().getLanguages()
     suspend fun getPersonal() = buildClient().getPersonal()
     suspend fun getJobs() = buildClient().getJobs()

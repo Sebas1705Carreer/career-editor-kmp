@@ -137,17 +137,18 @@ class CareerViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val languages = runCatching { repository.getLanguages() }.getOrDefault(Languages())
-                _selectedLangCode.value = languages.default.ifBlank { "en" }
+                // One request: it used to be eight, one after the other
+                val all = repository.getAll()
+                _selectedLangCode.value = all.languages.default.ifBlank { "en" }
                 _uiState.value = CareerUiState(
-                    languages      = languages,
-                    personal       = repository.getPersonal(),
-                    jobs           = repository.getJobs(),
-                    projects       = repository.getProjects(),
-                    skills         = repository.getSkills(),
-                    education      = repository.getEducation(),
-                    certifications = repository.getCertifications(),
-                    softSkills     = repository.getSoftSkills()
+                    languages      = all.languages,
+                    personal       = all.personal,
+                    jobs           = all.jobs,
+                    projects       = all.projects,
+                    skills         = all.skills,
+                    education      = all.education,
+                    certifications = all.certifications,
+                    softSkills     = all.softSkills
                 )
             } catch (e: CancellationException) {
                 throw e

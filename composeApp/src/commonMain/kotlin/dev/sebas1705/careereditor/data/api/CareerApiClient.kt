@@ -40,6 +40,8 @@ class CareerApiClient(
         }
     }
 
+    /** Every entity in one request (GET /all). */
+    suspend fun getAll(): AllData = httpClient.get("$baseUrl/all").body()
     suspend fun getLanguages(): Languages = httpClient.get("$baseUrl/languages").body()
     suspend fun getPersonal(): Personal = httpClient.get("$baseUrl/personal").body()
     suspend fun getJobs(): List<Job> = httpClient.get("$baseUrl/jobs").body()
