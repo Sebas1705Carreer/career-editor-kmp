@@ -9,7 +9,7 @@ import dev.sebas1705.careereditor.security.SecureStorage
 
 // BOM (U+FEFF) y zero-width space (U+200B) llegan al pegar desde algunos portapapeles,
 // trim() no los considera whitespace y rompen el Authorization header.
-private fun String.trimBom(): String = trim('\uFEFF', '\u200B')
+internal fun String.trimBom(): String = trim('\uFEFF', '\u200B')
 
 class CareerRepository(private val secureStorage: SecureStorage = SecureStorage()) {
 

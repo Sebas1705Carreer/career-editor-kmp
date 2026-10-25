@@ -17,9 +17,10 @@ import dev.sebas1705.careereditor.data.model.Project
 import dev.sebas1705.careereditor.data.model.resolve
 import dev.sebas1705.careereditor.presentation.components.*
 import dev.sebas1705.careereditor.presentation.viewmodel.CareerUiState
+import dev.sebas1705.careereditor.utils.ProjectContexts
 import dev.sebas1705.careereditor.utils.toSlug
 
-private val contextOptions = listOf("work" to "Trabajo", "academic" to "Académico", "personal" to "Personal")
+private val contextOptions = ProjectContexts.options
 private val contextLabels = contextOptions.toMap()
 
 @Composable

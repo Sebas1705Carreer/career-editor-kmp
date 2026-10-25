@@ -3,6 +3,7 @@ package dev.sebas1705.careereditor.data.api
 import dev.sebas1705.careereditor.data.model.*
 import io.ktor.client.*
 import io.ktor.client.call.*
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.auth.*
 import io.ktor.client.plugins.auth.providers.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -14,21 +15,23 @@ import kotlinx.serialization.json.Json
 
 const val DEFAULT_BASE_URL = "https://api.sebas1705.dev"
 
+// coerceInputValues: un null explicito en un campo no-nullable cae al valor
+// por defecto en vez de tirar la deserializacion entera (y con ella loadAll).
+// encodeDefaults: updates are PATCH (merge). Without it an emptied field equals its default
+// and is left out of the body, so clearing e.g. the GitHub URL would silently not persist.
+internal val careerJson = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true; encodeDefaults = true }
+
 class CareerApiClient(
     private val baseUrl: String = DEFAULT_BASE_URL,
-    private val token: String? = null
+    private val token: String? = null,
+    // Tests pass a MockEngine; the app leaves it null and gets the platform engine (OkHttp).
+    engine: HttpClientEngine? = null
 ) {
-    // coerceInputValues: un null explicito en un campo no-nullable cae al valor
-    // por defecto en vez de tirar la deserializacion entera (y con ella loadAll).
-    // encodeDefaults: updates are PATCH (merge). Without it an emptied field equals its default
-    // and is left out of the body, so clearing e.g. the GitHub URL would silently not persist.
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true; encodeDefaults = true }
-
-    val httpClient = HttpClient {
+    private val config: HttpClientConfig<*>.() -> Unit = {
         // Sin esto, un 401/4xx no lanza excepción y el JSON de error se
         // deserializa en un modelo vacío: la app cree que guardó y no guardó.
         expectSuccess = true
-        install(ContentNegotiation) { json(json) }
+        install(ContentNegotiation) { json(careerJson) }
         install(Logging) { level = LogLevel.INFO }
         if (!token.isNullOrBlank()) {
             install(Auth) {
@@ -39,6 +42,8 @@ class CareerApiClient(
             }
         }
     }
+
+    val httpClient: HttpClient = if (engine == null) HttpClient(config) else HttpClient(engine, config)
 
     /** Every entity in one request (GET /all). */
     suspend fun getAll(): AllData = httpClient.get("$baseUrl/all").body()
