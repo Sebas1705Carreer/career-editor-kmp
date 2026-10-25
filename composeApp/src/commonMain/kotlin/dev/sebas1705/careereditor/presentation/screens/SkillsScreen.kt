@@ -17,6 +17,7 @@ import coil3.compose.AsyncImage
 import dev.sebas1705.careereditor.data.model.Skill
 import dev.sebas1705.careereditor.presentation.components.*
 import dev.sebas1705.careereditor.presentation.viewmodel.CareerUiState
+import dev.sebas1705.careereditor.utils.SkillLevels
 import dev.sebas1705.careereditor.utils.toSlug
 
 /** Display order and Spanish names of the skill categories (the API stores the English key). */
@@ -34,9 +35,6 @@ private val categories = listOf(
 )
 private val categoryLabels = categories.toMap()
 private fun categoryLabel(key: String) = categoryLabels[key] ?: key.replaceFirstChar { it.uppercase() }
-
-// Same names as the portfolio shows for levels 1-4
-private val levelLabels = listOf("Básico", "Conocimiento", "Competente", "Avanzado")
 
 @Composable
 fun SkillsScreen(
@@ -218,10 +216,10 @@ private fun SkillEditor(
 
         FieldGroup("Nivel") {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(levelLabels[(level - 1).coerceIn(0, 3)], style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(SkillLevels.label(level), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 LevelDots(level)
             }
-            Slider(value = level.toFloat(), onValueChange = { level = it.toInt().coerceIn(1, 4) }, valueRange = 1f..4f, steps = 2)
+            Slider(value = level.toFloat(), onValueChange = { level = SkillLevels.coerce(it.toInt()) }, valueRange = SkillLevels.MIN.toFloat()..SkillLevels.MAX.toFloat(), steps = 2)
         }
     }
 }
