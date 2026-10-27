@@ -14,5 +14,9 @@ data class Project(
     @SerialName("long_desc") val longDesc: Map<String, String> = emptyMap(),
     val tags: List<String> = emptyList(),
     val github: String? = null,
-    val demo: String? = null
+    val demo: String? = null,
+    // Optional cover image: absolute https URL (the portfolio hosts them under /projects/<id>.webp)
+    @SerialName("image_url") val imageUrl: String? = null,
+    // LocalizedString or null: alt text of the cover; the portfolio falls back to the project name
+    @SerialName("image_alt") val imageAlt: Map<String, String>? = null
 )

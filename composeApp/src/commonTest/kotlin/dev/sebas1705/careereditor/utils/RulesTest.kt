@@ -84,4 +84,30 @@ class RulesTest {
         val pasted = "  ﻿tok_en_value​ \n"
         assertEquals("tok_en_value", pasted.trim().trimBom())
     }
+
+    // ── Project image: absolute https URL (or blank), max 2048 chars ─────────
+
+    @Test
+    fun projectImageUrlMustBeBlankOrAbsoluteHttps() {
+        assertTrue(ProjectImages.isValidUrl(""))
+        assertTrue(ProjectImages.isValidUrl("   "))
+        assertTrue(ProjectImages.isValidUrl("https://sebas1705carreer.github.io/carreerV2/projects/youknow.webp"))
+        assertTrue(ProjectImages.isValidUrl(" https://example.com/a.webp?v=2 "))
+        assertFalse(ProjectImages.isValidUrl("http://example.com/a.webp"))
+        assertFalse(ProjectImages.isValidUrl("javascript:alert(1)"))
+        assertFalse(ProjectImages.isValidUrl("/carreerV2/projects/a.webp"))
+        assertFalse(ProjectImages.isValidUrl("https://"))
+        assertFalse(ProjectImages.isValidUrl("https://example.com/a b.webp"))
+        assertFalse(ProjectImages.isValidUrl("https://example.com/" + "a".repeat(ProjectImages.MAX_URL_LENGTH)))
+    }
+
+    @Test
+    fun projectImageValuesSentToTheApi() {
+        assertNull(ProjectImages.urlOrNull("  "))
+        assertEquals("https://example.com/a.webp", ProjectImages.urlOrNull(" https://example.com/a.webp "))
+        assertNull(ProjectImages.altOrNull(emptyMap()))
+        assertNull(ProjectImages.altOrNull(mapOf("es" to " ", "en" to "")))
+        assertEquals(mapOf("en" to "Home"), ProjectImages.altOrNull(mapOf("es" to "", "en" to "Home")))
+        assertEquals("https://sebas1705carreer.github.io/carreerV2/projects/youknow.webp", ProjectImages.suggestedUrl("youknow"))
+    }
 }

@@ -137,6 +137,54 @@ class SerializationTest {
         assertEquals(education, json.decodeFromString<Education>(json.encodeToString(Education.serializer(), education)))
     }
 
+    // ── Project cover image (optional image_url + image_alt) ──────────────────
+
+    @Test
+    fun projectWithoutImageFieldsDecodesToNullAndRoundTrips() {
+        val decoded = json.decodeFromString<Project>(ApiFixtures.project)
+        assertNull(decoded.imageUrl)
+        assertNull(decoded.imageAlt)
+        assertEquals(decoded, json.decodeFromString<Project>(json.encodeToString(Project.serializer(), decoded)))
+    }
+
+    @Test
+    fun projectWithImageRoundTripsUnderSnakeCaseKeys() {
+        val decoded = json.decodeFromString<Project>(ApiFixtures.projectWithImage)
+        assertEquals("https://sebas1705carreer.github.io/carreerV2/projects/youknow.webp", decoded.imageUrl)
+        assertEquals(mapOf("es" to "Pantalla de inicio de YouKnow", "en" to "YouKnow home screen"), decoded.imageAlt)
+
+        val encoded = json.encodeToJsonElement(Project.serializer(), decoded).jsonObject
+        assertEquals(JsonPrimitive("https://sebas1705carreer.github.io/carreerV2/projects/youknow.webp"), encoded["image_url"])
+        assertEquals("YouKnow home screen", encoded["image_alt"]!!.jsonObject["en"]!!.jsonPrimitive.content)
+        assertFalse("imageUrl" in encoded)
+        assertFalse("imageAlt" in encoded)
+        assertEquals(decoded, json.decodeFromString<Project>(json.encodeToString(Project.serializer(), decoded)))
+    }
+
+    @Test
+    fun projectImageFieldsMayBeExplicitNulls() {
+        val decoded = json.decodeFromString<Project>(
+            """{"id":"p","name":"P","context":"personal","image_url":null,"image_alt":null}"""
+        )
+        assertNull(decoded.imageUrl)
+        assertNull(decoded.imageAlt)
+    }
+
+    @Test
+    fun projectWithUnknownKeysFromANewerApiStillDecodesItsImage() {
+        val decoded = json.decodeFromString<Project>(
+            """{"id":"p","name":"P","context":"personal","image_url":"https://example.com/p.webp","image_width":1280}"""
+        )
+        assertEquals("https://example.com/p.webp", decoded.imageUrl)
+    }
+
+    @Test
+    fun clearedImageIsSentAsNullSoAPatchMergeRemovesIt() {
+        val project = json.encodeToJsonElement(Project.serializer(), Project(id = "p", name = "P", context = "personal")).jsonObject
+        assertEquals(JsonNull, project["image_url"])
+        assertEquals(JsonNull, project["image_alt"])
+    }
+
     @Test
     fun certificationUrlMayBeNullForInProgressOnes() {
         val done = json.decodeFromString<Certification>(ApiFixtures.certification)

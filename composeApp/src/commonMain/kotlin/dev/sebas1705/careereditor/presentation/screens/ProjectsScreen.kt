@@ -12,12 +12,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import dev.sebas1705.careereditor.data.model.Project
 import dev.sebas1705.careereditor.data.model.resolve
 import dev.sebas1705.careereditor.presentation.components.*
 import dev.sebas1705.careereditor.presentation.viewmodel.CareerUiState
 import dev.sebas1705.careereditor.utils.ProjectContexts
+import dev.sebas1705.careereditor.utils.ProjectImages
 import dev.sebas1705.careereditor.utils.toSlug
 
 private val contextOptions = ProjectContexts.options
@@ -130,18 +136,24 @@ private fun ProjectEditor(
     var tags     by remember(base) { mutableStateOf(base.tags) }
     var desc     by remember(base) { mutableStateOf(base.desc) }
     var longDesc by remember(base) { mutableStateOf(base.longDesc) }
+    // The cover belongs to one project (its file is named after the id): a template does not pass it on
+    val imageBase = if (isNew) Project() else project
+    var imageUrl by remember(imageBase) { mutableStateOf(imageBase.imageUrl ?: "") }
+    var imageAlt by remember(imageBase) { mutableStateOf(imageBase.imageAlt ?: emptyMap()) }
+    val imageUrlValid = ProjectImages.isValidUrl(imageUrl)
 
     val built = Project(
         id = if (isNew) id else project.id, name = name, context = context, desc = desc, longDesc = longDesc,
-        tags = tags, github = github.ifBlank { null }, demo = demo.ifBlank { null }
+        tags = tags, github = github.ifBlank { null }, demo = demo.ifBlank { null },
+        imageUrl = ProjectImages.urlOrNull(imageUrl), imageAlt = ProjectImages.altOrNull(imageAlt)
     )
-    val dirty = if (isNew) name.isNotBlank() || tags.isNotEmpty() || desc.isNotEmpty() else built != project
+    val dirty = if (isNew) name.isNotBlank() || tags.isNotEmpty() || desc.isNotEmpty() || imageUrl.isNotBlank() else built != project
 
     EditorScaffold(
         title = if (isNew) "Nuevo proyecto" else project.name,
         isNew = isNew,
         dirty = dirty,
-        canSave = name.isNotBlank() && context.isNotBlank() && (!isNew || id.isNotBlank()),
+        canSave = name.isNotBlank() && context.isNotBlank() && (!isNew || id.isNotBlank()) && imageUrlValid,
         saving = state.isLoading,
         saveLabel = if (isNew) "Crear proyecto" else "Guardar cambios",
         onSave = { onSave(built) },
@@ -167,6 +179,32 @@ private fun ProjectEditor(
         FieldGroup("Descripción", trailing = { LangSwitch(state.languages.supported, lang, onLang) }) {
             SectionField("Descripción corta", desc[lang] ?: "", { desc = desc.with(lang, it) }, minLines = 2)
             SectionField("Descripción larga", longDesc[lang] ?: "", { longDesc = longDesc.with(lang, it) }, minLines = 4)
+        }
+
+        FieldGroup("Imagen") {
+            val projectId = if (isNew) id else project.id
+            SectionField(
+                "URL de la imagen", imageUrl, { imageUrl = it }, singleLine = true,
+                supportingText = when {
+                    !imageUrlValid -> "Debe ser una URL https:// absoluta (máx. ${ProjectImages.MAX_URL_LENGTH} caracteres)"
+                    imageUrl.isBlank() && projectId.isNotBlank() -> "Opcional. Ej.: ${ProjectImages.suggestedUrl(projectId)}"
+                    else -> null
+                }
+            )
+            if (imageUrl.isNotBlank() && imageUrlValid) {
+                AsyncImage(
+                    model = imageUrl.trim(),
+                    contentDescription = imageAlt[lang] ?: name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).padding(vertical = 4.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                )
+            }
+            SectionField("Texto alternativo (es)", imageAlt["es"] ?: "", { imageAlt = imageAlt.with("es", it) }, singleLine = true)
+            SectionField(
+                "Texto alternativo (en)", imageAlt["en"] ?: "", { imageAlt = imageAlt.with("en", it) }, singleLine = true,
+                supportingText = "Si se deja vacío, el portfolio usa el nombre del proyecto"
+            )
         }
     }
 }

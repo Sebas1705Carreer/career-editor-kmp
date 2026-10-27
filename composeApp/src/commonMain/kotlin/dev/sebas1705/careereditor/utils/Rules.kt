@@ -27,3 +27,28 @@ object ProjectContexts {
     fun isValid(context: String): Boolean = context in keys
     fun label(context: String): String? = options.firstOrNull { it.first == context }?.second
 }
+
+/**
+ * Project cover image, as the API validates it (`image_url: must be an absolute https URL, empty
+ * or null`, at most 2048 characters). The portfolio serves the files from GitHub Pages.
+ */
+object ProjectImages {
+    const val MAX_URL_LENGTH = 2048
+    const val BASE_URL = "https://sebas1705carreer.github.io/carreerV2/projects/"
+
+    private val httpsUrl = Regex("""^https://[^\s/]+\S*$""")
+
+    /** Blank means "no image"; anything else must be an absolute https URL of a sane length. */
+    fun isValidUrl(url: String): Boolean =
+        url.isBlank() || (url.trim().length <= MAX_URL_LENGTH && httpsUrl.matches(url.trim()))
+
+    /** Where the portfolio expects the cover of a project. */
+    fun suggestedUrl(projectId: String): String = "$BASE_URL$projectId.webp"
+
+    /** The value to send: trimmed URL, or null when blank. */
+    fun urlOrNull(url: String): String? = url.trim().ifBlank { null }
+
+    /** The alt map to send: blank languages dropped, null when nothing is left. */
+    fun altOrNull(alt: Map<String, String>): Map<String, String>? =
+        alt.filterValues { it.isNotBlank() }.ifEmpty { null }
+}

@@ -47,6 +47,14 @@ object ApiFixtures {
          "long_desc":{"en":"Full-stack enterprise management platform.","es":"Plataforma empresarial full-stack."}}
     """.trimIndent()
 
+    /** A project with the optional cover image (absolute https URL hosted by the portfolio + localized alt). */
+    val projectWithImage = """
+        {"id":"youknow","name":"YouKnow","context":"academic",
+         "desc":{"en":"Quiz app.","es":"App de preguntas."},"tags":["Kotlin"],"github":null,"demo":null,
+         "image_url":"https://sebas1705carreer.github.io/carreerV2/projects/youknow.webp",
+         "image_alt":{"es":"Pantalla de inicio de YouKnow","en":"YouKnow home screen"}}
+    """.trimIndent()
+
     val skill = """
         {"id":"kotlin","name":"Kotlin","level":4,"category":"languages",
          "icon_url":"https://img.icons8.com/?size=100&id=ZoxjA0jZDdFZ&format=png&color=000000"}
