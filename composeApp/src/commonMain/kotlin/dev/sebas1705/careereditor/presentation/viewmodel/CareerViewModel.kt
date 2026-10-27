@@ -95,10 +95,8 @@ class CareerViewModel(
             _loginLoading.value = true
             _loginError.value = null
             // The token is validated in memory first and only persisted when the API accepts it
-            when (repository.login(token)) {
-                LoginResult.Unreachable -> _loginError.value = "API no accesible"
-                LoginResult.Unauthorized ->
-                    _loginError.value = "Token inválido: la API rechaza las escrituras (401)"
+            when (val result = repository.login(token)) {
+                LoginResult.Unreachable, LoginResult.Unauthorized -> _loginError.value = result.failureMessage()
                 LoginResult.Success -> {
                     _authState.value = AuthState.Authenticated
                     loadAll()
@@ -341,12 +339,22 @@ class CareerViewModel(
     fun saveSettings(newUrl: String, newToken: String) {
         viewModelScope.launch {
             _settingsState.value = _settingsState.value.copy(isSaving = true, message = null)
-            if (newUrl.isNotBlank()) repository.saveBaseUrl(newUrl)
-            if (newToken.isNotBlank()) repository.saveToken(newToken)
+            // A new token is validated in memory first, exactly like login(); nothing is saved if it fails
+            val result = repository.saveSettings(newUrl, newToken)
             refreshSettings()
-            _settingsState.value = _settingsState.value.copy(isSaving = false, message = "Ajustes guardados")
-            loadAll()
+            _settingsState.value = _settingsState.value.copy(
+                isSaving = false,
+                message = result.failureMessage() ?: "Ajustes guardados"
+            )
+            if (result == LoginResult.Success) loadAll()
         }
+    }
+
+    /** User-facing text for a failed token check, shared by login and settings; null on success. */
+    private fun LoginResult.failureMessage(): String? = when (this) {
+        LoginResult.Success -> null
+        LoginResult.Unreachable -> "API no accesible"
+        LoginResult.Unauthorized -> "Token inválido: la API lo rechaza (401)"
     }
 
     fun clearSettingsMessage() { _settingsState.value = _settingsState.value.copy(message = null) }

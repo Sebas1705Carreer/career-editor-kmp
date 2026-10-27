@@ -52,9 +52,15 @@ class CareerRepositoryTest {
         handler(request)
     })
 
-    /** Root answers 200; the auth probe answers [probe]. */
-    private fun api(probe: HttpStatusCode, probeBody: String): suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { req ->
-        if (req.method == HttpMethod.Get) json("""{"name":"career-api"}""") else error(probe, probeBody)
+    /** Root answers 200; GET /auth/check answers 204 when [tokenAccepted], else 401. Anything else fails the test. */
+    private fun api(tokenAccepted: Boolean): suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData = { req ->
+        when {
+            req.method != HttpMethod.Get -> kotlin.test.fail("unexpected ${req.method.value} ${req.url}")
+            req.url.encodedPath == "/auth/check" ->
+                if (tokenAccepted) respond("", HttpStatusCode.NoContent)
+                else error(HttpStatusCode.Unauthorized, ApiFixtures.unauthorized)
+            else -> json("""{"name":"career-api"}""")
+        }
     }
 
     private fun store(vararg extra: Pair<String, String>) = FakeStore(mapOf(SecureKeys.API_BASE_URL to base, *extra))
@@ -62,7 +68,7 @@ class CareerRepositoryTest {
     @Test
     fun aRejectedTokenIsNeverPersisted() = runTest {
         val store = store()
-        val result = repo(store, api(HttpStatusCode.Unauthorized, ApiFixtures.unauthorized)).login(candidate)
+        val result = repo(store, api(tokenAccepted = false)).login(candidate)
 
         assertEquals(LoginResult.Unauthorized, result)
         assertTrue(store.puts.isEmpty(), "nothing may be written before the token is accepted")
@@ -72,7 +78,7 @@ class CareerRepositoryTest {
     }
 
     @Test
-    fun anUnreachableApiPersistsNothingAndSkipsTheAuthProbe() = runTest {
+    fun anUnreachableApiPersistsNothingAndSkipsTheAuthCheck() = runTest {
         val store = store()
         val result = repo(store) { error(HttpStatusCode.ServiceUnavailable, "") }.login(candidate)
 
@@ -84,7 +90,7 @@ class CareerRepositoryTest {
     @Test
     fun aFailedLoginLeavesThePreviouslyStoredTokenAlone() = runTest {
         val store = store(SecureKeys.API_TOKEN to "previous-token")
-        repo(store, api(HttpStatusCode.Unauthorized, ApiFixtures.unauthorized)).login(candidate)
+        repo(store, api(tokenAccepted = false)).login(candidate)
 
         assertEquals("previous-token", store.values[SecureKeys.API_TOKEN])
         assertTrue(store.puts.isEmpty() && store.removes.isEmpty())
@@ -93,7 +99,7 @@ class CareerRepositoryTest {
     @Test
     fun anAcceptedTokenIsPersistedTrimmedAfterValidation() = runTest {
         val store = store()
-        val result = repo(store, api(HttpStatusCode.BadRequest, ApiFixtures.invalidJson))
+        val result = repo(store, api(tokenAccepted = true))
             .login("﻿  $candidate ​")
 
         assertEquals(LoginResult.Success, result)
@@ -103,13 +109,86 @@ class CareerRepositoryTest {
     }
 
     @Test
-    fun loginNeverSendsAMutatingRequestOtherThanTheProbe() = runTest {
-        repo(store(), api(HttpStatusCode.BadRequest, ApiFixtures.invalidJson)).login(candidate)
+    fun loginOnlySendsReadOnlyRequests() = runTest {
+        repo(store(), api(tokenAccepted = true)).login(candidate)
 
-        val writes = requests.filter { it.method != HttpMethod.Get }
-        assertEquals(1, writes.size)
-        assertEquals(HttpMethod.Patch, writes.single().method)
-        assertEquals("$base/jobs/__folio-auth-probe__", writes.single().url.toString())
+        // Root reachability, then GET /auth/check: no write verb anywhere in the auth path
+        assertEquals(listOf(HttpMethod.Get, HttpMethod.Get), requests.map { it.method })
+        assertEquals("$base/auth/check", requests.last().url.toString())
         assertTrue(requests.all { it.url.host == "api.test.invalid" })
+    }
+
+    // ── Settings ──────────────────────────────────────────────────────────────
+
+    @Test
+    fun settingsWithARejectedTokenPersistNothingAndKeepThePreviousToken() = runTest {
+        val store = store(SecureKeys.API_TOKEN to "previous-token")
+        val result = repo(store, api(tokenAccepted = false)).saveSettings(newUrl = "", newToken = candidate)
+
+        assertEquals(LoginResult.Unauthorized, result)
+        assertEquals("previous-token", store.values[SecureKeys.API_TOKEN])
+        assertTrue(store.puts.isEmpty() && store.removes.isEmpty())
+        assertEquals("Bearer $candidate", requests.last().headers[HttpHeaders.Authorization])
+        assertTrue(requests.all { it.method == HttpMethod.Get })
+    }
+
+    @Test
+    fun settingsWithARejectedTokenDoNotSaveTheNewUrlEither() = runTest {
+        val newBase = "https://other.test.invalid"
+        val store = store(SecureKeys.API_TOKEN to "previous-token")
+        val result = repo(store, api(tokenAccepted = false)).saveSettings(newUrl = newBase, newToken = candidate)
+
+        assertEquals(LoginResult.Unauthorized, result)
+        assertTrue(store.puts.isEmpty())
+        assertEquals(base, store.values[SecureKeys.API_BASE_URL])
+        // The token was checked against the URL being saved
+        assertEquals("$newBase/auth/check", requests.last().url.toString())
+    }
+
+    @Test
+    fun settingsWithAnUnreachableApiPersistNothing() = runTest {
+        val store = store(SecureKeys.API_TOKEN to "previous-token")
+        val result = repo(store) { error(HttpStatusCode.ServiceUnavailable, "") }.saveSettings("", candidate)
+
+        assertEquals(LoginResult.Unreachable, result)
+        assertTrue(store.puts.isEmpty())
+        assertEquals("previous-token", store.values[SecureKeys.API_TOKEN])
+    }
+
+    @Test
+    fun settingsWithAnAcceptedTokenPersistItOnceCleaned() = runTest {
+        val store = store(SecureKeys.API_TOKEN to "previous-token")
+        val result = repo(store, api(tokenAccepted = true)).saveSettings(newUrl = "", newToken = "﻿  $candidate ​")
+
+        assertEquals(LoginResult.Success, result)
+        assertEquals(listOf(SecureKeys.API_TOKEN to candidate), store.puts)
+        assertEquals(candidate, store.values[SecureKeys.API_TOKEN])
+        assertEquals("Bearer $candidate", requests.last().headers[HttpHeaders.Authorization])
+        assertTrue(requests.all { it.method == HttpMethod.Get })
+    }
+
+    @Test
+    fun settingsWithAnAcceptedTokenAndNewUrlPersistBoth() = runTest {
+        val newBase = "https://other.test.invalid"
+        val store = store()
+        val result = repo(store, api(tokenAccepted = true)).saveSettings(newUrl = "  $newBase ", newToken = candidate)
+
+        assertEquals(LoginResult.Success, result)
+        assertEquals(
+            listOf(SecureKeys.API_BASE_URL to newBase, SecureKeys.API_TOKEN to candidate),
+            store.puts
+        )
+        assertTrue(requests.all { it.url.host == "other.test.invalid" })
+    }
+
+    @Test
+    fun settingsWithoutANewTokenSaveOnlyTheUrlAndSendNothing() = runTest {
+        val store = store(SecureKeys.API_TOKEN to "previous-token")
+        val result = repo(store, api(tokenAccepted = false)).saveSettings(newUrl = "https://other.test.invalid", newToken = " ​ ")
+
+        assertEquals(LoginResult.Success, result)
+        assertEquals(listOf(SecureKeys.API_BASE_URL to "https://other.test.invalid"), store.puts)
+        assertEquals("previous-token", store.values[SecureKeys.API_TOKEN])
+        assertTrue(requests.isEmpty())
     }
 }

@@ -16,11 +16,8 @@ import kotlinx.serialization.json.Json
 
 const val DEFAULT_BASE_URL = "https://api.sebas1705.dev"
 
-/** Auth probe target: an id no entity has, so the request never addresses real data. */
-internal const val AUTH_PROBE_PATH = "jobs/__folio-auth-probe__"
-
-/** Deliberately malformed JSON: the worker rejects it (400) after auth and before any KV access. */
-internal const val AUTH_PROBE_BODY = "{"
+/** Read-only token check: 204 for a valid bearer token, 401 otherwise; never touches KV. */
+internal const val AUTH_CHECK_PATH = "auth/check"
 
 // coerceInputValues: un null explicito en un campo no-nullable cae al valor
 // por defecto en vez de tirar la deserializacion entera (y con ella loadAll).
@@ -68,20 +65,13 @@ class CareerApiClient(
     }.getOrDefault(false)
 
     /**
-     * Checks that the token is accepted for writes WITHOUT writing anything.
-     *
-     * Every GET on the career API is public, so only a write route tells a good token from a
-     * bad one. The worker's dispatcher checks the bearer token before running any handler
-     * (401 when it is wrong), and the PATCH handler parses the body before touching KV: a
-     * malformed JSON body is rejected with 400 "Invalid JSON body" with no KV read or write.
-     * The id cannot exist either, so even a lenient parser would end in 404, not in an update.
-     * So: 400 means the token passed auth; 401/403, or anything else, means it is not usable.
+     * Checks that the token is accepted for writes WITHOUT writing anything: a plain
+     * `GET /auth/check`, which the API answers with 204 for a valid bearer token and 401 for a
+     * missing or wrong one, without touching KV. Only 204 counts as valid; 401, any other
+     * status or a network failure means the token is not usable.
      */
     suspend fun validateAuth(): Boolean = runCatching {
-        httpClient.patch("$baseUrl/$AUTH_PROBE_PATH") {
-            expectSuccess = false
-            contentType(ContentType.Application.Json); setBody(AUTH_PROBE_BODY)
-        }.status == HttpStatusCode.BadRequest
+        httpClient.get("$baseUrl/$AUTH_CHECK_PATH") { expectSuccess = false }.status == HttpStatusCode.NoContent
     }.getOrDefault(false)
 
     // ── Singular updates ──────────────────────────────────────────────────────

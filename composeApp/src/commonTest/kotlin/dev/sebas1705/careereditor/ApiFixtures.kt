@@ -86,7 +86,6 @@ object ApiFixtures {
 
     // Error bodies the worker answers with (career-api-worker: auth.ts, router.ts, validation)
     val unauthorized = """{"error":"Unauthorized"}"""
-    val invalidJson = """{"error":"Invalid JSON body"}"""
     val validationFailed = """{"error":"Validation failed","details":["projects.context: must be one of: work, academic, personal","skills.level: must be between 1 and 4"]}"""
     val bodyTooLarge = """{"error":"Body too large"}"""
 }

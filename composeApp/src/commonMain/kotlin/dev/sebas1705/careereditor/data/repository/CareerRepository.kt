@@ -45,13 +45,36 @@ class CareerRepository(
      * API is reachable and accepts it. A rejected token never touches [secureStorage], and
      * whatever was stored before is left as it was.
      */
-    suspend fun login(token: String): LoginResult {
+    suspend fun login(token: String): LoginResult =
+        validateThenPersist(baseUrl = getBaseUrl(), token = token, persistBaseUrl = false)
+
+    /**
+     * Settings save. A new token goes through the same validate-then-persist flow as [login],
+     * against the URL being saved (or the current one when the URL is left blank): if the API is
+     * unreachable or rejects the token, nothing is written, neither the token nor the URL, and
+     * the previous values stay. Without a new token only the URL (if any) is saved, as before.
+     */
+    suspend fun saveSettings(newUrl: String, newToken: String): LoginResult {
+        val url = newUrl.trim()
+        if (newToken.cleanToken().isEmpty()) {
+            if (url.isNotEmpty()) saveBaseUrl(url)
+            return LoginResult.Success
+        }
+        return validateThenPersist(
+            baseUrl = url.ifEmpty { getBaseUrl() },
+            token = newToken,
+            persistBaseUrl = url.isNotEmpty()
+        )
+    }
+
+    private suspend fun validateThenPersist(baseUrl: String, token: String, persistBaseUrl: Boolean): LoginResult {
         val candidate = token.cleanToken()
-        val client = buildClient(token = candidate)
+        val client = CareerApiClient(baseUrl = baseUrl, token = candidate, engine = engine)
         return when {
             !client.validateConnection() -> LoginResult.Unreachable
             !client.validateAuth() -> LoginResult.Unauthorized
             else -> {
+                if (persistBaseUrl) saveBaseUrl(baseUrl)
                 saveToken(candidate)
                 LoginResult.Success
             }
