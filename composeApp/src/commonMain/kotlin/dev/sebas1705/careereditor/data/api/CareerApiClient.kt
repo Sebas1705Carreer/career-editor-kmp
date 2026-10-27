@@ -5,6 +5,7 @@ import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.auth.*
+import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.plugins.auth.providers.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.logging.*
@@ -14,6 +15,12 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
 
 const val DEFAULT_BASE_URL = "https://api.sebas1705.dev"
+
+/** Auth probe target: an id no entity has, so the request never addresses real data. */
+internal const val AUTH_PROBE_PATH = "jobs/__folio-auth-probe__"
+
+/** Deliberately malformed JSON: the worker rejects it (400) after auth and before any KV access. */
+internal const val AUTH_PROBE_BODY = "{"
 
 // coerceInputValues: un null explicito en un campo no-nullable cae al valor
 // por defecto en vez de tirar la deserializacion entera (y con ella loadAll).
@@ -61,13 +68,20 @@ class CareerApiClient(
     }.getOrDefault(false)
 
     /**
-     * Valida que el token autoriza escrituras: PATCH /languages con cuerpo vacío
-     * es un merge sin cambios (no-op) que devuelve 200 con auth valida y 401 sin ella.
+     * Checks that the token is accepted for writes WITHOUT writing anything.
+     *
+     * Every GET on the career API is public, so only a write route tells a good token from a
+     * bad one. The worker's dispatcher checks the bearer token before running any handler
+     * (401 when it is wrong), and the PATCH handler parses the body before touching KV: a
+     * malformed JSON body is rejected with 400 "Invalid JSON body" with no KV read or write.
+     * The id cannot exist either, so even a lenient parser would end in 404, not in an update.
+     * So: 400 means the token passed auth; 401/403, or anything else, means it is not usable.
      */
     suspend fun validateAuth(): Boolean = runCatching {
-        httpClient.patch("$baseUrl/languages") {
-            contentType(ContentType.Application.Json); setBody("{}")
-        }.status.isSuccess()
+        httpClient.patch("$baseUrl/$AUTH_PROBE_PATH") {
+            expectSuccess = false
+            contentType(ContentType.Application.Json); setBody(AUTH_PROBE_BODY)
+        }.status == HttpStatusCode.BadRequest
     }.getOrDefault(false)
 
     // ── Singular updates ──────────────────────────────────────────────────────
