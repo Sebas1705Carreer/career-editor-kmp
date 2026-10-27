@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.sebas1705.careereditor.data.model.*
 import dev.sebas1705.careereditor.data.repository.CareerRepository
+import dev.sebas1705.careereditor.data.repository.LoginResult
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.ServerResponseException
 import kotlinx.coroutines.CancellationException
@@ -93,18 +94,12 @@ class CareerViewModel(
         viewModelScope.launch {
             _loginLoading.value = true
             _loginError.value = null
-            repository.saveToken(token)
-            when {
-                !repository.validateConnection() -> {
-                    repository.clearToken()
-                    _loginError.value = "API no accesible"
-                }
-                // Las lecturas son públicas: hay que validar el token contra una escritura real
-                !repository.validateAuth() -> {
-                    repository.clearToken()
+            // The token is validated in memory first and only persisted when the API accepts it
+            when (repository.login(token)) {
+                LoginResult.Unreachable -> _loginError.value = "API no accesible"
+                LoginResult.Unauthorized ->
                     _loginError.value = "Token inválido: la API rechaza las escrituras (401)"
-                }
-                else -> {
+                LoginResult.Success -> {
                     _authState.value = AuthState.Authenticated
                     loadAll()
                 }

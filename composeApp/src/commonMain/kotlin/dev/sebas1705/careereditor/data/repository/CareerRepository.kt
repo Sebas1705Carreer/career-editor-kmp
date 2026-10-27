@@ -5,19 +5,28 @@ import dev.sebas1705.careereditor.data.api.DEFAULT_BASE_URL
 import dev.sebas1705.careereditor.data.model.*
 import dev.sebas1705.careereditor.security.SecureKeys
 import dev.sebas1705.careereditor.security.embeddedApiToken
+import dev.sebas1705.careereditor.security.KeyValueStore
 import dev.sebas1705.careereditor.security.SecureStorage
+import io.ktor.client.engine.HttpClientEngine
 
 // BOM (U+FEFF) y zero-width space (U+200B) llegan al pegar desde algunos portapapeles,
 // trim() no los considera whitespace y rompen el Authorization header.
 internal fun String.trimBom(): String = trim('\uFEFF', '\u200B')
 
-class CareerRepository(private val secureStorage: SecureStorage = SecureStorage()) {
+/** What gets validated and stored: whitespace, BOM and zero-width spaces stripped in any order. */
+internal fun String.cleanToken(): String = trim { it.isWhitespace() || it == '\uFEFF' || it == '\u200B' }
 
-    private fun buildClient(): CareerApiClient {
-        val token = getToken()
-        val baseUrl = secureStorage.get(SecureKeys.API_BASE_URL) ?: DEFAULT_BASE_URL
-        return CareerApiClient(baseUrl = baseUrl, token = token)
-    }
+/** Outcome of [CareerRepository.login]; the view model maps each one to its message/state. */
+enum class LoginResult { Success, Unreachable, Unauthorized }
+
+class CareerRepository(
+    private val secureStorage: KeyValueStore = SecureStorage(),
+    // Tests pass a MockEngine; the app leaves it null and gets the platform engine.
+    private val engine: HttpClientEngine? = null
+) {
+
+    private fun buildClient(token: String? = getToken()): CareerApiClient =
+        CareerApiClient(baseUrl = getBaseUrl(), token = token, engine = engine)
 
     suspend fun getAll() = buildClient().getAll()
     suspend fun getLanguages() = buildClient().getLanguages()
@@ -30,9 +39,26 @@ class CareerRepository(private val secureStorage: SecureStorage = SecureStorage(
     suspend fun getSoftSkills() = buildClient().getSoftSkills()
 
     suspend fun validateConnection(): Boolean = buildClient().validateConnection()
-    suspend fun validateAuth(): Boolean = buildClient().validateAuth()
 
-    fun saveToken(token: String) = secureStorage.put(SecureKeys.API_TOKEN, token.trim().trimBom())
+    /**
+     * Validates [token] with a client that holds it only in memory and persists it only when the
+     * API is reachable and accepts it. A rejected token never touches [secureStorage], and
+     * whatever was stored before is left as it was.
+     */
+    suspend fun login(token: String): LoginResult {
+        val candidate = token.cleanToken()
+        val client = buildClient(token = candidate)
+        return when {
+            !client.validateConnection() -> LoginResult.Unreachable
+            !client.validateAuth() -> LoginResult.Unauthorized
+            else -> {
+                saveToken(candidate)
+                LoginResult.Success
+            }
+        }
+    }
+
+    fun saveToken(token: String) = secureStorage.put(SecureKeys.API_TOKEN, token.cleanToken())
     /** A token the user typed wins; otherwise the one compiled into the build, if any. */
     fun getToken(): String? =
         secureStorage.get(SecureKeys.API_TOKEN)?.takeIf { it.isNotBlank() }

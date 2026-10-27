@@ -225,14 +225,29 @@ class CareerApiClientTest {
     }
 
     @Test
-    fun validateAuthPatchesLanguagesWithAnEmptyMergeAndMapsTheStatus() = runTest {
-        assertTrue(client { json(ApiFixtures.languages) }.validateAuth())
+    fun validateAuthSendsOnlyTheNonMutatingProbe() = runTest {
+        client { error(HttpStatusCode.BadRequest, ApiFixtures.invalidJson) }.validateAuth()
         val probe = requests.single()
+        // The only write verb is a PATCH to an id that cannot exist, with a body that cannot parse:
+        // the worker answers it after auth and before any KV access. Never /languages or a real id.
         assertEquals(HttpMethod.Patch, probe.method)
-        assertEquals("$base/languages", probe.url.toString())
-        assertEquals("{}", probe.bodyText())
+        assertEquals("$base/jobs/__folio-auth-probe__", probe.url.toString())
+        assertEquals("{", probe.bodyText())
         assertEquals("Bearer $token", probe.headers[HttpHeaders.Authorization])
+    }
 
+    @Test
+    fun validateAuthIsTrueOnlyWhenTheProbeGetsPastAuth() = runTest {
+        // 400 = auth passed, the malformed body was rejected; nothing was written
+        assertTrue(client { error(HttpStatusCode.BadRequest, ApiFixtures.invalidJson) }.validateAuth())
         assertFalse(client { error(HttpStatusCode.Unauthorized, ApiFixtures.unauthorized) }.validateAuth())
+        assertFalse(client { error(HttpStatusCode.Forbidden, """{"error":"Forbidden"}""") }.validateAuth())
+        // Unknown answers are not proof of a good token
+        assertFalse(client { error(HttpStatusCode.NotFound, """{"error":"Route not found"}""") }.validateAuth())
+        assertFalse(client { error(HttpStatusCode.InternalServerError, "") }.validateAuth())
+        assertFalse(client { throw IllegalStateException("no network") }.validateAuth())
+        // Without a token there is no Authorization header at all
+        assertFalse(client(token = null) { error(HttpStatusCode.Unauthorized, ApiFixtures.unauthorized) }.validateAuth())
+        assertNull(requests.last().headers[HttpHeaders.Authorization])
     }
 }

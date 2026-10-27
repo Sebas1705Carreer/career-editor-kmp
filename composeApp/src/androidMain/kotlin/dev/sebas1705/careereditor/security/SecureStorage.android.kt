@@ -7,7 +7,7 @@ import androidx.security.crypto.MasterKey
 // Injected by MainActivity before first use
 lateinit var appContext: Context
 
-actual class SecureStorage {
+actual class SecureStorage : KeyValueStore {
     private val prefs by lazy {
         val masterKey = MasterKey.Builder(appContext)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -21,8 +21,8 @@ actual class SecureStorage {
         )
     }
 
-    actual fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
-    actual fun get(key: String): String? = prefs.getString(key, null)
-    actual fun remove(key: String) = prefs.edit().remove(key).apply()
-    actual fun clear() = prefs.edit().clear().apply()
+    actual override fun put(key: String, value: String) = prefs.edit().putString(key, value).apply()
+    actual override fun get(key: String): String? = prefs.getString(key, null)
+    actual override fun remove(key: String) = prefs.edit().remove(key).apply()
+    actual override fun clear() = prefs.edit().clear().apply()
 }
