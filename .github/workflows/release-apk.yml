@@ -5,6 +5,17 @@ name: Release APK
 # token out of the APK. It goes to Firebase App Distribution only, where just the testers
 # invited there can download it.
 # GitHub only needs one secret, DOPPLER_TOKEN (read-only service token of folio/prd).
+#
+# Secrets are scoped to the step that needs them (least privilege):
+#   - DOPPLER_TOKEN is set only on the steps that call Doppler, never at job level, so the
+#     third-party actions and the Gradle build do not see it (it is also removed from the
+#     environment of the commands Doppler launches).
+#   - The Gradle build gets only the API token it embeds plus the signing values; the Firebase
+#     service-account JSON is never in its environment.
+#   - The Firebase upload gets only the app id and the service-account JSON.
+# The Gradle build cache is off for this job (--no-build-cache, no setup-gradle cache), so a
+# token-bearing build output can never be written to or read from a cache.
+# Actions are pinned by commit SHA, firebase-tools by exact version.
 on:
   push:
     tags: ["v*"]
@@ -27,10 +38,10 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Resolve the version
         id: ver
@@ -46,47 +57,67 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: dopplerhq/cli-action@v3
+      # No Gradle cache: the release build embeds the API token and must neither write nor read one
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          cache-disabled: true
+      - uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
 
       # Fails by name when a secret is missing instead of building an unsigned or token-less APK.
       - name: Check the Doppler secrets
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
           for k in API_TOKEN SIGNING_KEYSTORE_BASE64 SIGNING_STORE_PASSWORD SIGNING_KEY_ALIAS SIGNING_KEY_PASSWORD \
                    FIREBASE_APP_ID FIREBASE_SERVICE_ACCOUNT_JSON; do
             doppler secrets get "$k" --plain >/dev/null || { echo "::error::Doppler secret $k is missing in folio/prd"; exit 1; }
           done
 
+      # Only the keystore is read here, then written to a private temp file
+      - name: Prepare the signing keystore
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler run --only-secrets SIGNING_KEYSTORE_BASE64 -- env -u DOPPLER_TOKEN bash -c '
+            umask 077
+            printf "%s" "$SIGNING_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/folio.jks"'
+
+      # The only step that sees API_TOKEN (embedded into the APK as BuildConfig.API_TOKEN).
+      # DOPPLER_TOKEN is removed from the build's environment; the Firebase credentials are not passed.
       - name: Build the signed APK
         env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           VERSION_NAME: ${{ steps.ver.outputs.version }}
           VERSION_CODE: ${{ github.run_number }}
         run: |
           chmod +x gradlew
-          doppler run -- bash -c '
-            umask 077
-            printf "%s" "$SIGNING_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/folio.jks"
+          doppler run --only-secrets API_TOKEN,SIGNING_STORE_PASSWORD,SIGNING_KEY_ALIAS,SIGNING_KEY_PASSWORD -- env -u DOPPLER_TOKEN bash -c '
             export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/folio.jks"
             export ANDROID_KEYSTORE_PASSWORD="$SIGNING_STORE_PASSWORD"
             export ANDROID_KEY_ALIAS="$SIGNING_KEY_ALIAS"
             export ANDROID_KEY_PASSWORD="$SIGNING_KEY_PASSWORD"
-            ./gradlew :composeApp:assembleRelease --no-daemon'
+            ./gradlew :composeApp:assembleRelease --no-daemon --no-build-cache'
 
+      # The only step that sees the Firebase service-account JSON. firebase-tools is pinned to an
+      # exact version (an unpinned npx would run whatever was published last, with this JSON in scope).
+      # To upgrade, check the release on https://www.npmjs.com/package/firebase-tools and bump FIREBASE_TOOLS_VERSION.
       - name: Upload to Firebase App Distribution
         env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           TESTER_GROUP: ${{ vars.FIREBASE_TESTER_GROUP || 'testers' }}
           VERSION: ${{ steps.ver.outputs.version }}
+          FIREBASE_TOOLS_VERSION: "15.34.2"
         run: |
           export NOTES="v$VERSION: $(git log -1 --pretty='%s (%h)')"
-          doppler run -- bash -c '
+          doppler run --only-secrets FIREBASE_APP_ID,FIREBASE_SERVICE_ACCOUNT_JSON -- env -u DOPPLER_TOKEN bash -c '
             umask 077
             printf "%s" "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-sa.json"
             export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
-            npx --yes firebase-tools appdistribution:distribute composeApp/build/outputs/apk/release/composeApp-release.apk \
+            npx --yes "firebase-tools@$FIREBASE_TOOLS_VERSION" appdistribution:distribute composeApp/build/outputs/apk/release/composeApp-release.apk \
               --app "$FIREBASE_APP_ID" \
               --groups "$TESTER_GROUP" \
               --release-notes "$NOTES"'
