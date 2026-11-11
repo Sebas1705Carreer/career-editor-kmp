@@ -52,6 +52,7 @@ doppler run -- ./gradlew :composeApp:installDebug
 
 Without Doppler the app still builds and asks for the token on first launch, as before. Rotating the token: change `API_SECRET` in Cloudflare and `API_TOKEN` in Doppler (`dev` and `prd`), then tag a new version.
 > **Anyone who has the APK can extract the token.** That is why the APK is never attached to a GitHub release (this repository is public): it only goes to Firebase App Distribution, to the testers invited there.
+> A design note proposing per-device write tokens instead of one shared secret is in [`docs/adr/0001-per-device-write-tokens.md`](docs/adr/0001-per-device-write-tokens.md) (proposed, not implemented).
 
 ## Trying writes without touching production
 
